@@ -1,4 +1,3 @@
-# renderers/image.py
 from typing import Optional
 import numpy as np
 import cv2 as cv
@@ -6,7 +5,7 @@ from renderers.renderer import Renderer
 import os
 
 
-class Image(Renderer):
+class ImageRenderer(Renderer):
     image_path: str = ""
     original_image: Optional[np.ndarray] = None  # RGB
     visualized_image: Optional[np.ndarray] = None  # RGB

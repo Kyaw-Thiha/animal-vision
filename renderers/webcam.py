@@ -5,6 +5,24 @@ from renderers.renderer import Renderer
 
 
 class WebcamRenderer(Renderer):
+    """
+    Webcam I/O helper for real-time vision pipelines.
+
+    Features
+    --------
+    - Opens a webcam stream by index and configures resolution, FPS, autofocus, etc.
+    - Returns RGB frames via `get_image()`.
+    - Previews frames in an OpenCV window (optionally mirrored for human-friendly view).
+    - Saves processed output to a video file if `write_path` is provided.
+    - Provides split-frame comparison utilities for before/after visualization.
+
+    Notes
+    -----
+    - All frames are exchanged in RGB; conversions to BGR happen only at I/O boundaries.
+    - `render()` shows frames live and optionally encodes them to disk.
+    - `render_split_compare()` builds a half-and-half composite before rendering.
+    """
+
     def __init__(
         self,
         *,
@@ -18,6 +36,32 @@ class WebcamRenderer(Renderer):
         autofocus: bool = True,  # best-effort; driver-dependent
         auto_exposure: bool = True,
     ):
+        """
+        Initialize webcam renderer.
+
+        Parameters
+        ----------
+        index : int, optional
+            Camera index to open (default: 0).
+        width : int, optional
+            Desired capture width in pixels. Best-effort (driver may override).
+        height : int, optional
+            Desired capture height in pixels. Best-effort.
+        fps : int, optional
+            Target capture FPS. Best-effort; will fall back to driver values if unsupported.
+        write_path : str, optional
+            Path to an output video file. If provided, frames rendered via `render()`
+            will be encoded and saved.
+        window_name : str, optional
+            Name of the OpenCV preview window.
+        mirror_preview : bool, optional
+            If True, live preview window is horizontally flipped (selfie-style).
+            Saved video remains non-mirrored.
+        autofocus : bool, optional
+            Enable autofocus if supported by backend. Driver/OS dependent.
+        auto_exposure : bool, optional
+            Enable auto-exposure if supported. Encoding is backend-specific.
+        """
         self.index = index
         self.width = width
         self.height = height
@@ -35,6 +79,22 @@ class WebcamRenderer(Renderer):
 
     # ---------- Lifecycle ----------
     def open(self) -> None:
+        """
+        Open the webcam stream and attempt to configure capture properties.
+
+        Behavior
+        --------
+        - Opens `self.index` with OpenCV (CAP_ANY backend).
+        - Attempts to set width, height, and FPS (driver may override).
+        - Configures autofocus and auto-exposure if supported.
+        - Creates a preview window if `window_name` is set.
+        - If the camera reports a valid FPS, it overrides the requested FPS for writing.
+
+        Raises
+        ------
+        RuntimeError
+            If the webcam cannot be opened.
+        """
         self.cap = cv.VideoCapture(self.index, cv.CAP_ANY)
         if not self.cap.isOpened():
             raise RuntimeError(f"Failed to open webcam index {self.index}")
@@ -71,7 +131,15 @@ class WebcamRenderer(Renderer):
 
     # ---------- Input ----------
     def get_image(self) -> Optional[np.ndarray]:
-        """Grab the next RGB frame from the webcam, or None if failure."""
+        """
+        Grab the next frame from the webcam.
+
+        Returns
+        -------
+        Optional[np.ndarray]
+            Next RGB frame as (H, W, 3) uint8 array, or None if capture fails
+            (e.g., camera disconnected or end-of-stream).
+        """
         if not self.cap:
             return None
         ok, bgr = self.cap.read()
@@ -82,6 +150,19 @@ class WebcamRenderer(Renderer):
 
     # ---------- Output ----------
     def _ensure_writer(self, frame: np.ndarray) -> None:
+        """
+        Lazily create the video writer when the first frame is available.
+
+        Parameters
+        ----------
+        frame : np.ndarray
+            Frame used to infer output size (H, W).
+
+        Raises
+        ------
+        RuntimeError
+            If the writer cannot be opened at `write_path`.
+        """
         if not self.write_path or self.writer is not None:
             return
         h, w = frame.shape[:2]
@@ -92,8 +173,20 @@ class WebcamRenderer(Renderer):
             raise RuntimeError(f"Failed to open video for writing: {self.write_path}")
 
     def render(self, frame: np.ndarray) -> None:
-        """Write and/or preview one RGB frame."""
-        # Create writer lazily with the first frame
+        """
+        Write and/or preview one RGB frame.
+
+        Parameters
+        ----------
+        frame : np.ndarray
+            RGB frame (HxWx3). Should be uint8 for encoding.
+
+        Behavior
+        --------
+        - Encodes the frame to `write_path` if saving is enabled.
+        - Shows the frame in the preview window (mirrored if enabled).
+        - Press 'q' in the preview window to close.
+        """
         self._ensure_writer(frame)
 
         if self.writer:
@@ -110,6 +203,16 @@ class WebcamRenderer(Renderer):
                 self.close()
 
     def close(self) -> None:
+        """
+        Release resources safely.
+
+        Behavior
+        --------
+        - Releases the webcam capture if open.
+        - Closes the video writer if active.
+        - Destroys the preview window if created.
+        - Safe to call multiple times.
+        """
         if self.cap:
             self.cap.release()
             self.cap = None
@@ -123,12 +226,16 @@ class WebcamRenderer(Renderer):
     # ---------- Methods of split rendering ----------
     def _draw_label(self, img: np.ndarray, text: str, org: tuple[int, int]) -> None:
         """
-        Draw a semi-transparent label box with outlined text on an RGB webcam frame.
+        Draw a semi-transparent label box with outlined text on an RGB frame (in place).
 
-        Args:
-            img: HxWx3 RGB frame (uint8 or float), modified in-place.
-            text: Label text.
-            org: Bottom-left corner (x, y) of the text baseline.
+        Parameters
+        ----------
+        img : np.ndarray
+            Target RGB frame (HxWx3), modified in place.
+        text : str
+            Label text to render.
+        org : tuple[int, int]
+            Bottom-left (x, y) of the text baseline.
         """
         font = cv.FONT_HERSHEY_SIMPLEX
         h = img.shape[0]
@@ -169,9 +276,25 @@ class WebcamRenderer(Renderer):
         draw_seam: bool = True,
     ) -> np.ndarray:
         """
-        Create a half-and-half comparison frame (left: original, right: modified).
-        Resizes `modified` to match `original` if needed; draws labels and an optional seam.
-        Returns an RGB frame ready for `render()`.
+        Create a half-and-half comparison frame.
+
+        Parameters
+        ----------
+        original : np.ndarray
+            Left-side RGB frame (HxWx3).
+        modified : np.ndarray
+            Right-side RGB frame (HxWx3). Will be resized to match `original` if needed.
+        left_label : str, optional
+            Label for the left side (default: "Original").
+        right_label : str, optional
+            Label for the right side (default: "Transformed").
+        draw_seam : bool, optional
+            Whether to draw a vertical seam at the center (default: True).
+
+        Returns
+        -------
+        np.ndarray
+            Composite RGB frame with labels and seam applied.
         """
         assert isinstance(original, np.ndarray) and original.ndim == 3 and original.shape[2] == 3, "original must be HxWx3 RGB"
         assert isinstance(modified, np.ndarray) and modified.ndim == 3 and modified.shape[2] == 3, "modified must be HxWx3 RGB"
@@ -206,8 +329,26 @@ class WebcamRenderer(Renderer):
         draw_seam: bool = True,
     ) -> None:
         """
-        Compose a labeled split frame and write/preview it via `render()`.
-        Respects `mirror_preview` for the on-screen view only (saved video is non-mirrored).
+        Compose and render a labeled split-frame comparison.
+
+        Parameters
+        ----------
+        original : np.ndarray
+            Left-side RGB frame (HxWx3).
+        modified : np.ndarray
+            Right-side RGB frame (HxWx3).
+        left_label : str, optional
+            Label for the left side (default: "Original").
+        right_label : str, optional
+            Label for the right side (default: "Transformed").
+        draw_seam : bool, optional
+            Draw a vertical seam at the split if True.
+
+        Notes
+        -----
+        - Uses `make_split_frame()` to build the composite.
+        - Then passes the composite to `render()` for preview and saving.
+        - `mirror_preview` affects only on-screen display, not the saved file.
         """
         frame = self.make_split_frame(
             original,

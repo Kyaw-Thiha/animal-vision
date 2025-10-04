@@ -6,6 +6,21 @@ import os
 
 
 class ImageRenderer(Renderer):
+    """
+    Simple image I/O helper that:
+      • Loads an image from disk exactly once (cached as RGB).
+      • Renders (shows) an image in an OpenCV window (optional).
+      • Saves the currently visualized image to disk (optional).
+      • Provides a split-screen comparison helper (left: original, right: modified).
+
+    Notes
+    -----
+    - All public methods expect/provide RGB images with shape (H, W, 3), dtype=uint8.
+    - Internally converts only at I/O boundaries (disk read/write and imshow).
+    - The class does not mutate input arrays except where explicitly documented
+      (e.g., drawing labels on a composed split image before rendering).
+    """
+
     image_path: str = ""
     original_image: Optional[np.ndarray] = None  # RGB
     visualized_image: Optional[np.ndarray] = None  # RGB
@@ -19,6 +34,25 @@ class ImageRenderer(Renderer):
         save_to: Optional[str] = None,  # e.g., "out.png"
         wait_key: int = 0,  # 0 = wait indefinitely
     ) -> None:
+        """
+        Initialize the renderer with an input path and optional display/save settings.
+
+        Parameters
+        ----------
+        image_path : str
+            Path to the image file to load (read on first `get_image()` call).
+        show_window : bool, optional
+            If True, calls to `render()`/`render_split_compare()` will open/show an
+            OpenCV window. Defaults to True.
+        window_name : str, optional
+            Name of the OpenCV preview window. Ignored if `show_window` is False.
+        save_to : Optional[str], optional
+            If provided, every call to `render()` (including via split rendering)
+            will save the current frame to this path (PNG/JPEG inferred by extension).
+        wait_key : int, optional
+            Milliseconds to wait in `cv.waitKey()`. Use 0 to block indefinitely,
+            or a small positive value (e.g., 1–30) for non-blocking UI. Defaults to 0.
+        """
         super().__init__()
         self.image_path = image_path
         self.show_window = show_window
@@ -29,7 +63,20 @@ class ImageRenderer(Renderer):
 
     # ---------- Input (loader) ----------
     def get_image(self) -> Optional[np.ndarray]:
-        """Load once, cache in RGB."""
+        """
+        Load the source image from disk once and cache it as RGB.
+
+        Returns
+        -------
+        Optional[np.ndarray]
+            The RGB image (H, W, 3, uint8) if successfully loaded; otherwise None.
+
+        Behavior
+        --------
+        - If the image was previously loaded, returns the cached copy.
+        - Supports grayscale, BGR, and BGRA inputs; converts to RGB.
+        - Prints a short message and returns None if the file is missing or unreadable.
+        """
         if self.original_image is not None:
             return self.original_image
         if not os.path.exists(self.image_path):
@@ -53,12 +100,35 @@ class ImageRenderer(Renderer):
 
     # ---------- Output (render) ----------
     def open(self) -> None:
+        """
+        Prepare the preview window if `show_window` is enabled.
+
+        Notes
+        -----
+        - Safe to call multiple times; the window is created only once.
+        - No image is displayed until `render()` or `render_split_compare()` is called.
+        """
         if self.show_window and not self._window_created:
             cv.namedWindow(self.window_name, cv.WINDOW_AUTOSIZE)
             self._window_created = True
 
     def render(self, frame: np.ndarray) -> None:
-        """Render one frame (RGB in → show/save)."""
+        """
+        Render (show and/or save) a single RGB frame.
+
+        Parameters
+        ----------
+        frame : np.ndarray
+            RGB image with shape (H, W, 3). Should be dtype=uint8 for correct saving.
+
+        Behavior
+        --------
+        - If `save_to` is set, writes the frame to disk (PNG/JPEG by extension).
+        - If `show_window` is True, displays the frame in the named window.
+        - Uses `wait_key` to control UI blocking (0 blocks; >0 is non-blocking).
+        - In non-blocking mode (`wait_key` > 0), pressing 'q' closes the window.
+        - Stores the last rendered frame in `visualized_image`.
+        """
         self.visualized_image = frame
         if self.save_to:
             # Write as sRGB PNG/JPEG
@@ -77,24 +147,48 @@ class ImageRenderer(Renderer):
                 self.close()
 
     def close(self) -> None:
+        """
+        Close the preview window if it exists.
+
+        Notes
+        -----
+        - Safe to call multiple times.
+        - Does not clear cached images; only tears down the UI window.
+        """
         if self._window_created:
             cv.destroyWindow(self.window_name)
             self._window_created = False
 
     # ---------- Convenience for your current call-site ----------
     def send_image(self, image: np.ndarray) -> None:
-        """Keep for compatibility: just delegates to render()."""
+        """
+        Backward-compatible alias for `render()`.
+
+        Parameters
+        ----------
+        image : np.ndarray
+            RGB image with shape (H, W, 3). Forwarded to `render(image)`.
+        """
         self.render(image)
 
     # ---------- Methods of split rendering ----------
     def _draw_label(self, img: np.ndarray, text: str, org: tuple[int, int]) -> None:
         """
-        Draw a semi-transparent label box with text on an RGB image.
+        Draw a semi-transparent label box with outlined text on an RGB image (in place).
 
-        Args:
-            img: RGB uint8/float image (modified in place).
-            text: Label text.
-            org: Bottom-left corner (x, y) of the text baseline.
+        Parameters
+        ----------
+        img : np.ndarray
+            Target RGB image (HxWx3), modified in place.
+        text : str
+            Label text to draw.
+        org : tuple[int, int]
+            Bottom-left (x, y) coordinates of the text baseline.
+
+        Notes
+        -----
+        - Chooses a fixed font scale suitable for typical HD/UHD frames.
+        - Keeps the label within image bounds and adds padding for readability.
         """
         font = cv.FONT_HERSHEY_SIMPLEX
         font_scale = 0.6
@@ -129,18 +223,37 @@ class ImageRenderer(Renderer):
         draw_seam: bool = True,
     ) -> None:
         """
-        Show/save a half-and-half comparison: left half from `original`, right half from `modified`.
+        Compose and render a half-and-half comparison frame.
 
-        - Resizes `modified` to match `original` if needed.
-        - Draws labels on top-left and top-right corners.
-        - Uses existing window/save behavior via `self.render`.
+        The left half is taken from `original` and the right half from `modified`.
+        Labels are drawn in the top-left and top-right, and a thin vertical seam can
+        be drawn at the split for clarity. The composed image is sent through the
+        standard `render()` pipeline (show/save).
 
-        Args:
-            original: RGB image (HxWx3).
-            modified: RGB image (HxWx3), will be resized to match `original` if sizes differ.
-            left_label: Label for the left (original) half.
-            right_label: Label for the right (modified) half.
-            draw_seam: If True, draw a thin vertical seam at the split.
+        Parameters
+        ----------
+        original : np.ndarray
+            RGB image (HxWx3) for the left half.
+        modified : np.ndarray
+            RGB image (HxWx3) for the right half. Will be resized to match `original`
+            if spatial dimensions differ.
+        left_label : str, optional
+            Text label for the left half. Defaults to "Original".
+        right_label : str, optional
+            Text label for the right half. Defaults to "Transformed".
+        draw_seam : bool, optional
+            If True, draw a 1-pixel white vertical seam at the center split. Defaults to True.
+
+        Raises
+        ------
+        AssertionError
+            If either input is not an HxWx3 array.
+
+        Notes
+        -----
+        - The composed image is created by copying `original` and replacing the right half
+          with the (possibly resized) `modified`. Inputs are not mutated.
+        - After composition and label drawing, the result is passed to `render()`.
         """
         assert isinstance(original, np.ndarray) and original.ndim == 3 and original.shape[2] == 3, (
             "original must be an HxWx3 RGB image"
@@ -151,7 +264,7 @@ class ImageRenderer(Renderer):
 
         H, W, _ = original.shape
         if modified.shape[:2] != (H, W):
-            # OpenCV expects BGR but we're only resizing, so channel order doesn't matter here
+            # OpenCV expects BGR but we're only resizing; channel order is irrelevant here
             modified_rs = cv.resize(modified, (W, H), interpolation=cv.INTER_AREA)
         else:
             modified_rs = modified

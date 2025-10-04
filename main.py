@@ -41,12 +41,14 @@ def video(input_dir: str = VIDEO_INPUT, output_dir: str = VIDEO_OUTPUT):
     filename = choose_file(input_dir, (".mp4", ".avi", ".mov"))
     save_name = choose_filename(output_dir, ".mp4")
     vr = VideoRenderer(read_path=filename, write_path=save_name, window_name="AnimalCam")
+    animal = None
     vr.open()
     while True:
         frame = vr.get_image()
         if frame is None:
             break
-        animal = choose_animal()  # per-frame processing
+        if animal == None:
+            animal = choose_animal()  # per-frame processing
         out = animal.visualize(frame)
         if out is not None:
             vr.render(out)
@@ -58,12 +60,14 @@ def webcam(output_dir: str = VIDEO_OUTPUT):
     save_name = choose_filename(output_dir, ".mp4")
     wr = WebcamRenderer(index=0, width=1280, height=720, write_path=save_name, window_name="AnimalCam")
     wr.open()
+    animal = None
     try:
         while True:
             frame = wr.get_image()
             if frame is None:
                 break
-            animal = choose_animal()  # per-frame processing
+            if animal == None:
+                animal = choose_animal()  # per-frame processing
             out = animal.visualize(frame)
             if out is not None:
                 wr.render(out)

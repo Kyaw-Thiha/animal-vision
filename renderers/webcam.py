@@ -56,9 +56,7 @@ class WebcamRenderer(Renderer):
         if self.auto_exposure is not None:
             try:
                 # OpenCV uses odd AE encodings; 1 = auto, 0.25 = manual on some backends
-                self.cap.set(
-                    cv.CAP_PROP_AUTO_EXPOSURE, 1.0 if self.auto_exposure else 0.25
-                )
+                self.cap.set(cv.CAP_PROP_AUTO_EXPOSURE, 1.0 if self.auto_exposure else 0.25)
             except Exception:
                 pass
 
@@ -89,9 +87,7 @@ class WebcamRenderer(Renderer):
         h, w = frame.shape[:2]
         self._writer_size = (w, h)
         fourcc = cv.VideoWriter_fourcc(*"mp4v")  #  type: ignore[attr-defined]
-        self.writer = cv.VideoWriter(
-            self.write_path, fourcc, float(self.fps or 30), (w, h)
-        )
+        self.writer = cv.VideoWriter(self.write_path, fourcc, float(self.fps or 30), (w, h))
         if not self.writer.isOpened():
             raise RuntimeError(f"Failed to open video for writing: {self.write_path}")
 
@@ -107,9 +103,7 @@ class WebcamRenderer(Renderer):
         if self._window_created:
             preview = frame
             if self.mirror_preview:
-                preview = np.ascontiguousarray(
-                    frame[:, ::-1, :]
-                )  # fast horizontal flip
+                preview = np.ascontiguousarray(frame[:, ::-1, :])  # fast horizontal flip
             bgr = cv.cvtColor(preview, cv.COLOR_RGB2BGR)
             cv.imshow(self.window_name, bgr)
             if (cv.waitKey(1) & 0xFF) == ord("q"):
@@ -125,3 +119,89 @@ class WebcamRenderer(Renderer):
         if self._window_created:
             cv.destroyWindow(self.window_name)
             self._window_created = False
+
+    # ---------- Methods of split rendering ----------
+    def _draw_label(self, img: np.ndarray, text: str, org: tuple[int, int]) -> None:
+        """
+        Draw a solid label box with text on an RGB frame (in-place).
+        Args:
+            img: HxWx3 RGB frame (uint8 or float).
+            text: Label text.
+            org: Bottom-left (x, y) of the text baseline.
+        """
+        font = cv.FONT_HERSHEY_SIMPLEX
+        h = img.shape[0]
+        font_scale = max(0.45, min(1.2, h / 900.0))  # scale roughly with height
+        thickness = 1
+        text_color = (255, 255, 255)  # RGB
+        box_color = (0, 0, 0)
+        pad = 6
+
+        (tw, th), baseline = cv.getTextSize(text, font, font_scale, thickness)
+        x, y = org
+        x0 = max(x - pad, 0)
+        y0 = max(y - th - baseline - pad, 0)
+        x1 = min(x + tw + pad, img.shape[1] - 1)
+        y1 = min(y + baseline + pad, img.shape[0] - 1)
+
+        cv.rectangle(img, (x0, y0), (x1, y1), box_color, thickness=-1)
+        cv.putText(img, text, (x, y), font, font_scale, text_color, thickness, cv.LINE_AA)
+
+    def make_split_frame(
+        self,
+        original: np.ndarray,
+        modified: np.ndarray,
+        *,
+        left_label: str = "Original",
+        right_label: str = "Transformed",
+        draw_seam: bool = True,
+    ) -> np.ndarray:
+        """
+        Create a half-and-half comparison frame (left: original, right: modified).
+        Resizes `modified` to match `original` if needed; draws labels and an optional seam.
+        Returns an RGB frame ready for `render()`.
+        """
+        assert isinstance(original, np.ndarray) and original.ndim == 3 and original.shape[2] == 3, "original must be HxWx3 RGB"
+        assert isinstance(modified, np.ndarray) and modified.ndim == 3 and modified.shape[2] == 3, "modified must be HxWx3 RGB"
+
+        H, W, _ = original.shape
+        if modified.shape[:2] != (H, W):
+            modified_rs = cv.resize(modified, (W, H), interpolation=cv.INTER_AREA)
+        else:
+            modified_rs = modified
+
+        out = original.copy()
+        mid = W // 2
+        out[:, mid:, :] = modified_rs[:, mid:, :]
+
+        if draw_seam:
+            out[:, mid : mid + 1, :] = 255  # 1px white seam
+
+        # Labels
+        self._draw_label(out, left_label, org=(10, 24))
+        (tw, _), _ = cv.getTextSize(right_label, cv.FONT_HERSHEY_SIMPLEX, max(0.45, min(1.2, H / 900.0)), 1)
+        self._draw_label(out, right_label, org=(max(W - tw - 10, 10), 24))
+
+        return out
+
+    def render_split_compare(
+        self,
+        original: np.ndarray,
+        modified: np.ndarray,
+        *,
+        left_label: str = "Original",
+        right_label: str = "Transformed",
+        draw_seam: bool = True,
+    ) -> None:
+        """
+        Compose a labeled split frame and write/preview it via `render()`.
+        Respects `mirror_preview` for the on-screen view only (saved video is non-mirrored).
+        """
+        frame = self.make_split_frame(
+            original,
+            modified,
+            left_label=left_label,
+            right_label=right_label,
+            draw_seam=draw_seam,
+        )
+        self.render(frame)

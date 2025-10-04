@@ -3,6 +3,7 @@ import typer
 import numpy as np
 from InquirerPy import inquirer
 
+from animals.cat import Cat
 from renderers.image import ImageRenderer
 from renderers.video import VideoRenderer
 from renderers.webcam import WebcamRenderer
@@ -27,8 +28,11 @@ def image(input_dir: str = IMAGES_INPUT, output_dir: str = IMAGES_OUTPUT):
     img = renderer.get_image()
     if img is not None:
         # out = process_img(img)
-        out = img
-        renderer.render(out)
+        cat = Cat()
+        out = cat.visualize(img)
+        if out is not None:
+            # renderer.render(out)
+            renderer.render_split_compare(img, out)
 
     renderer.close()
 

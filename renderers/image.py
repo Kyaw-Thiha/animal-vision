@@ -85,3 +85,86 @@ class ImageRenderer(Renderer):
     def send_image(self, image: np.ndarray) -> None:
         """Keep for compatibility: just delegates to render()."""
         self.render(image)
+
+    # ---------- Methods of split rendering ----------
+    def _draw_label(self, img: np.ndarray, text: str, org: tuple[int, int]) -> None:
+        """
+        Draw a solid label box with text on an RGB image.
+
+        Args:
+            img: RGB uint8/float image (modified in place).
+            text: Label text.
+            org: Bottom-left corner (x, y) of the text baseline.
+        """
+        font = cv.FONT_HERSHEY_SIMPLEX
+        font_scale = 0.6
+        thickness = 2
+        text_color = (255, 255, 255)  # white (RGB)
+        box_color = (0, 0, 0)  # black background
+        pad = 6
+
+        (tw, th), baseline = cv.getTextSize(text, font, font_scale, thickness)
+        x, y = org
+        x0 = max(x - pad, 0)
+        y0 = max(y - th - baseline - pad, 0)
+        x1 = min(x + tw + pad, img.shape[1] - 1)
+        y1 = min(y + baseline + pad, img.shape[0] - 1)
+
+        cv.rectangle(img, (x0, y0), (x1, y1), box_color, thickness=-1)
+        cv.putText(img, text, (x, y), font, font_scale, text_color, thickness, cv.LINE_AA)
+
+    def render_split_compare(
+        self,
+        original: np.ndarray,
+        modified: np.ndarray,
+        *,
+        left_label: str = "Original",
+        right_label: str = "Transformed",
+        draw_seam: bool = True,
+    ) -> None:
+        """
+        Show/save a half-and-half comparison: left half from `original`, right half from `modified`.
+
+        - Resizes `modified` to match `original` if needed.
+        - Draws labels on top-left and top-right corners.
+        - Uses existing window/save behavior via `self.render`.
+
+        Args:
+            original: RGB image (HxWx3).
+            modified: RGB image (HxWx3), will be resized to match `original` if sizes differ.
+            left_label: Label for the left (original) half.
+            right_label: Label for the right (modified) half.
+            draw_seam: If True, draw a thin vertical seam at the split.
+        """
+        assert isinstance(original, np.ndarray) and original.ndim == 3 and original.shape[2] == 3, (
+            "original must be an HxWx3 RGB image"
+        )
+        assert isinstance(modified, np.ndarray) and modified.ndim == 3 and modified.shape[2] == 3, (
+            "modified must be an HxWx3 RGB image"
+        )
+
+        H, W, _ = original.shape
+        if modified.shape[:2] != (H, W):
+            # OpenCV expects BGR but we're only resizing, so channel order doesn't matter here
+            modified_rs = cv.resize(modified, (W, H), interpolation=cv.INTER_AREA)
+        else:
+            modified_rs = modified
+
+        # Compose half-and-half
+        out = original.copy()
+        mid = W // 2
+        out[:, mid:, :] = modified_rs[:, mid:, :]
+
+        # Optional seam
+        if draw_seam:
+            # Draw a 1px white line at the split
+            out[:, mid : mid + 1, :] = 255
+
+        # Labels
+        self._draw_label(out, left_label, org=(10, 24))  # top-left area
+        right_text_size, _ = cv.getTextSize(right_label, cv.FONT_HERSHEY_SIMPLEX, 0.55, 1)
+        rt_w = right_text_size[0]
+        self._draw_label(out, right_label, org=(max(W - rt_w - 10, 10), 24))
+
+        # Show/save using existing pipeline
+        self.render(out)

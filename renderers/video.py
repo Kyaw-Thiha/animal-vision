@@ -28,9 +28,7 @@ class VideoRenderer(Renderer):
         if self.read_path:
             self.cap = cv2.VideoCapture(self.read_path)
             if not self.cap.isOpened():
-                raise RuntimeError(
-                    f"Failed to open video for reading: {self.read_path}"
-                )
+                raise RuntimeError(f"Failed to open video for reading: {self.read_path}")
             # If source FPS is available, use it for writing unless explicitly set
             src_fps = self.cap.get(cv2.CAP_PROP_FPS)
             if src_fps and src_fps > 0:
@@ -88,3 +86,95 @@ class VideoRenderer(Renderer):
         if self._window_created:
             cv2.destroyWindow(self.window_name)
             self._window_created = False
+
+    # ---------- Methods of split rendering ----------
+    def _draw_label(self, img: np.ndarray, text: str, org: tuple[int, int]) -> None:
+        """
+        Draw a solid label box with text on an RGB frame (in-place).
+
+        Args:
+            img: HxWx3 RGB frame (uint8 or float).
+            text: Label text.
+            org: Bottom-left (x, y) of the text baseline.
+        """
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        # Scale a bit with height for readability
+        h = img.shape[0]
+        font_scale = max(0.45, min(1.2, h / 900.0))
+        thickness = 1
+        text_color = (255, 255, 255)  # white (RGB)
+        box_color = (0, 0, 0)  # black background
+        pad = 6
+
+        (tw, th), baseline = cv2.getTextSize(text, font, font_scale, thickness)
+        x, y = org
+        x0 = max(x - pad, 0)
+        y0 = max(y - th - baseline - pad, 0)
+        x1 = min(x + tw + pad, img.shape[1] - 1)
+        y1 = min(y + baseline + pad, img.shape[0] - 1)
+
+        cv2.rectangle(img, (x0, y0), (x1, y1), box_color, thickness=-1)
+        cv2.putText(img, text, (x, y), font, font_scale, text_color, thickness, cv2.LINE_AA)
+
+    def make_split_frame(
+        self,
+        original: np.ndarray,
+        modified: np.ndarray,
+        *,
+        left_label: str = "Original",
+        right_label: str = "Transformed",
+        draw_seam: bool = True,
+    ) -> np.ndarray:
+        """
+        Build a half-and-half comparison frame (left: original, right: modified).
+
+        - Resizes `modified` to match `original` if needed.
+        - Draws labels in the top-left and top-right.
+        - Optionally draws a 1px seam at the split.
+
+        Returns:
+            RGB frame ready to pass to `render()`.
+        """
+        assert isinstance(original, np.ndarray) and original.ndim == 3 and original.shape[2] == 3, "original must be HxWx3 RGB"
+        assert isinstance(modified, np.ndarray) and modified.ndim == 3 and modified.shape[2] == 3, "modified must be HxWx3 RGB"
+
+        H, W, _ = original.shape
+        if modified.shape[:2] != (H, W):
+            modified_rs = cv2.resize(modified, (W, H), interpolation=cv2.INTER_AREA)
+        else:
+            modified_rs = modified
+
+        out = original.copy()
+        mid = W // 2
+        out[:, mid:, :] = modified_rs[:, mid:, :]
+
+        if draw_seam:
+            out[:, mid : mid + 1, :] = 255  # white seam
+
+        # Labels
+        self._draw_label(out, left_label, org=(10, 24))
+        (tw, _), _ = cv2.getTextSize(right_label, cv2.FONT_HERSHEY_SIMPLEX, max(0.45, min(1.2, H / 900.0)), 1)
+        self._draw_label(out, right_label, org=(max(W - tw - 10, 10), 24))
+
+        return out
+
+    def render_split_compare(
+        self,
+        original: np.ndarray,
+        modified: np.ndarray,
+        *,
+        left_label: str = "Original",
+        right_label: str = "Transformed",
+        draw_seam: bool = True,
+    ) -> None:
+        """
+        Compose a labeled split frame and write/preview it via `render()`.
+        """
+        frame = self.make_split_frame(
+            original,
+            modified,
+            left_label=left_label,
+            right_label=right_label,
+            draw_seam=draw_seam,
+        )
+        self.render(frame)

@@ -89,7 +89,7 @@ class ImageRenderer(Renderer):
     # ---------- Methods of split rendering ----------
     def _draw_label(self, img: np.ndarray, text: str, org: tuple[int, int]) -> None:
         """
-        Draw a solid label box with text on an RGB image.
+        Draw a semi-transparent label box with text on an RGB image.
 
         Args:
             img: RGB uint8/float image (modified in place).
@@ -99,8 +99,8 @@ class ImageRenderer(Renderer):
         font = cv.FONT_HERSHEY_SIMPLEX
         font_scale = 0.6
         thickness = 2
-        text_color = (255, 255, 255)  # white (RGB)
-        box_color = (0, 0, 0)  # black background
+        text_color = (255, 255, 255)  # white
+        outline_color = (0, 0, 0)  # black
         pad = 6
 
         (tw, th), baseline = cv.getTextSize(text, font, font_scale, thickness)
@@ -110,7 +110,13 @@ class ImageRenderer(Renderer):
         x1 = min(x + tw + pad, img.shape[1] - 1)
         y1 = min(y + baseline + pad, img.shape[0] - 1)
 
-        cv.rectangle(img, (x0, y0), (x1, y1), box_color, thickness=-1)
+        # Transparent box
+        overlay = img.copy()
+        cv.rectangle(overlay, (x0, y0), (x1, y1), (0, 0, 0), thickness=-1)
+        cv.addWeighted(overlay, 0.6, img, 0.4, 0, img)
+
+        # Text with outline
+        cv.putText(img, text, (x, y), font, font_scale, outline_color, thickness + 2, cv.LINE_AA)
         cv.putText(img, text, (x, y), font, font_scale, text_color, thickness, cv.LINE_AA)
 
     def render_split_compare(

@@ -123,28 +123,40 @@ class WebcamRenderer(Renderer):
     # ---------- Methods of split rendering ----------
     def _draw_label(self, img: np.ndarray, text: str, org: tuple[int, int]) -> None:
         """
-        Draw a solid label box with text on an RGB frame (in-place).
+        Draw a semi-transparent label box with outlined text on an RGB webcam frame.
+
         Args:
-            img: HxWx3 RGB frame (uint8 or float).
+            img: HxWx3 RGB frame (uint8 or float), modified in-place.
             text: Label text.
-            org: Bottom-left (x, y) of the text baseline.
+            org: Bottom-left corner (x, y) of the text baseline.
         """
         font = cv.FONT_HERSHEY_SIMPLEX
         h = img.shape[0]
-        font_scale = max(0.45, min(1.2, h / 900.0))  # scale roughly with height
-        thickness = 1
-        text_color = (255, 255, 255)  # RGB
-        box_color = (0, 0, 0)
-        pad = 6
+        font_scale = max(0.5, min(1.2, h / 900.0))  # scale with webcam resolution
+        thickness = 2
+        text_color = (255, 255, 255)  # white text
+        outline_color = (0, 0, 0)  # black outline
+        pad = 8
 
         (tw, th), baseline = cv.getTextSize(text, font, font_scale, thickness)
         x, y = org
-        x0 = max(x - pad, 0)
-        y0 = max(y - th - baseline - pad, 0)
-        x1 = min(x + tw + pad, img.shape[1] - 1)
-        y1 = min(y + baseline + pad, img.shape[0] - 1)
 
-        cv.rectangle(img, (x0, y0), (x1, y1), box_color, thickness=-1)
+        # Keep label fully inside the frame
+        if x + tw + pad > img.shape[1]:
+            x = img.shape[1] - tw - pad
+        if y - th - baseline - pad < 0:
+            y = th + baseline + pad
+
+        x0, y0 = max(x - pad, 0), max(y - th - baseline - pad, 0)
+        x1, y1 = min(x + tw + pad, img.shape[1] - 1), min(y + baseline + pad, img.shape[0] - 1)
+
+        # Semi-transparent background
+        overlay = img.copy()
+        cv.rectangle(overlay, (x0, y0), (x1, y1), (0, 0, 0), thickness=-1)
+        cv.addWeighted(overlay, 0.6, img, 0.4, 0, img)
+
+        # Text with outline for readability
+        cv.putText(img, text, (x, y), font, font_scale, outline_color, thickness + 2, cv.LINE_AA)
         cv.putText(img, text, (x, y), font, font_scale, text_color, thickness, cv.LINE_AA)
 
     def make_split_frame(

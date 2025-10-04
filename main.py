@@ -6,18 +6,22 @@ from InquirerPy import inquirer
 from renderers.image import ImageRenderer
 from renderers.video import VideoRenderer
 from renderers.webcam import WebcamRenderer
+from utils import choose_file, choose_filename
 
 
 app = typer.Typer()
 
-INPUT_DIR = "input/images"
-OUTPUT_DIR = "output"
+IMAGES_INPUT = "input/images"
+VIDEO_INPUT = "input/video"
+IMAGES_OUTPUT = "output"
+VIDEO_OUTPUT = "output"
 
 
 @app.command()
-def image(input_dir: str = INPUT_DIR):
-    filename = os.path.join(input_dir, "filename")
-    renderer = ImageRenderer(filename, show_window=True, save_to="out.png", wait_key=0)
+def image(input_dir: str = IMAGES_INPUT, output_dir: str = IMAGES_OUTPUT):
+    filename = choose_file(input_dir, (".png", ".jpg"))
+    save_name = choose_filename(output_dir, ".png")
+    renderer = ImageRenderer(filename, show_window=True, save_to=save_name, wait_key=0)
     renderer.open()
 
     img = renderer.get_image()
@@ -30,8 +34,10 @@ def image(input_dir: str = INPUT_DIR):
 
 
 @app.command()
-def video():
-    vr = VideoRenderer(read_path="in.mp4", write_path="out.mp4", window_name="Preview")
+def video(input_dir: str = VIDEO_INPUT, output_dir: str = VIDEO_OUTPUT):
+    filename = choose_file(input_dir, (".mp4", ".avi", ".mov"))
+    save_name = choose_filename(output_dir, ".mp4")
+    vr = VideoRenderer(read_path=filename, write_path=save_name, window_name="Preview")
     vr.open()
     while True:
         frame = vr.get_image()
@@ -45,9 +51,7 @@ def video():
 
 @app.command()
 def webcam():
-    wr = WebcamRenderer(
-        index=0, width=1280, height=720, write_path="out.mp4", window_name="AnimalCam"
-    )
+    wr = WebcamRenderer(index=0, width=1280, height=720, write_path="out.mp4", window_name="AnimalCam")
     wr.open()
     try:
         while True:

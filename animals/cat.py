@@ -1,5 +1,6 @@
 from typing import Optional
 import numpy as np
+# from animals.animal_utils import srgb_to_linear
 
 from animals.animal import Animal
 

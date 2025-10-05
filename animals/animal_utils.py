@@ -10,7 +10,6 @@ def srgb_to_linear(x: np.ndarray) -> np.ndarray:
         ((x + a) / (1 + a)) ** 2.4,
     )
 
-
 def linear_to_srgb(x: np.ndarray) -> np.ndarray:
     a = 0.055
     return np.where(
@@ -145,8 +144,7 @@ def apply_acuity_blur(image: np.ndarray, sigma: float = 1.5) -> np.ndarray:
     blurred = cv2.GaussianBlur(image_f, (0, 0), sigmaX=sigma, sigmaY=sigma)
     return blurred.astype(dtype, copy=False)
 
-
-def apply_anisotropic_acuity_blur_with_streak(image, *, y_center: float = 0.5,
+def apply_anisotropic_acuity_blur_with_streak(image, y_center: float = 0.5,
                                          sigma_streak: float = 0.8,
                                          sigma_far: float = 2.2,
                                          falloff: float = 6.0):
@@ -160,7 +158,6 @@ def apply_anisotropic_acuity_blur_with_streak(image, *, y_center: float = 0.5,
     d = np.abs(yy - y_center)                             # distance from streak
     # smoothly vary sigma between streak and far
     sigma_map = sigma_streak + (sigma_far - sigma_streak) * (1.0 - np.exp(-falloff * d**2))
-    # vertical (sigmaY) > horizontal (sigmaX) to emulate horizontal slit pupil
     sigmaY = sigma_map
     sigmaX = np.maximum(0.4, 0.5 * sigma_map)
 
@@ -169,7 +166,39 @@ def apply_anisotropic_acuity_blur_with_streak(image, *, y_center: float = 0.5,
     tmp = np.empty_like(out)
     for y in range(H):
         tmp[y] = cv2.GaussianBlur(out[y], (0,0), sigmaX=float(sigmaX[y,0]), sigmaY=0.0)
+
     for y in range(H):
-        out[y] = cv2.GaussianBlur(tmp[y], (0,0), sigmaX=0.0, sigmaY=float(sigmaY[y,0]))
+        out[y] = cv2.GaussianBlur(tmp[y], (0,0), sigmaX=1e-16, sigmaY=float(sigmaY[y,0]))
     return out.astype(image.dtype, copy=False)
 
+def apply_chroma_compression(image: np.ndarray, strength: float = 0.4):
+    """
+    Compresses color saturation toward gray.
+    strength=0 → no change
+    strength=1 → complete grayscale
+    """
+    gray = image.mean(axis=2, keepdims=True)
+    return gray + (image - gray) * (1 - strength)
+
+def apply_tapetum_bloom(image: np.ndarray, strength: float = 0.12, sigma: float = 3.0) -> np.ndarray:
+    """
+    Subtle low-light bloom in linear RGB.
+    strength: 0..~0.3
+    sigma: blur radius for bloom spread
+    """
+    import cv2, numpy as np
+    x = image.astype(np.float32, copy=False)
+    x = np.clip(x, 0.0, 1.0)
+    # luminance mask to bloom bright areas a bit more
+    L = 0.2126 * x[...,0] + 0.7152 * x[...,1] + 0.0722 * x[...,2]
+    mask = np.clip((L - 0.4) / 0.6, 0.0, 1.0)  # start blooming above midtones
+    mask = cv2.GaussianBlur(mask, (0,0), sigmaX=sigma, sigmaY=sigma)[..., None]
+
+    # blurred copy of the image
+    blur = cv2.GaussianBlur(x, (0,0), sigmaX=sigma, sigmaY=sigma)
+
+    # screen-like blend, gated by mask
+    # screen(a,b) = 1 - (1-a)(1-b)
+    screen = 1.0 - (1.0 - x) * (1.0 - blur)
+    y = x + strength * mask * (screen - x)
+    return np.clip(y, 0.0, 1.0).astype(image.dtype, copy=False)

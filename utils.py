@@ -4,7 +4,7 @@ import cv2
 from InquirerPy import inquirer
 
 from animals.animal import Animal
-from animals import Cat, Dog
+from animals import Cat, Dog, Sheep, Pig, Goat, Cow
 
 def processimage(imagedata: bytes, animal: str) -> bytes:
     """
@@ -74,6 +74,10 @@ def choose_animal() -> Animal:
     animal_choices = [
         {"name": "Cat", "value": Cat()},
         {"name": "Dog", "value": Dog()},
+        {"name": "Sheep", "value": Sheep()},
+        {"name": "Pig", "value": Pig()},
+        {"name": "Goat", "value": Goat()},
+        {"name": "Cow", "value": Cow()},
     ]
     animal_choice = inquirer.select(  # type: ignore[reportPrivateImportUsage]
         message="Select which animal you want to visualize:",
@@ -82,3 +86,5 @@ def choose_animal() -> Animal:
     ).execute()
 
     return animal_choice
+
+

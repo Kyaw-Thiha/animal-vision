@@ -6,24 +6,57 @@ import {useRef, useState, useEffect} from 'react'
 
 function Picture() {
     const navigate = useNavigate();
-    const videoPlayerRef = useRef(null); 
-    const canvasRef = useRef(null); 
-    const hiddencanvasRef = useRef(null); 
+    const videoPlayerRef = useRef<HTMLVideoElement | null>(null); 
+    const canvasRef = useRef<HTMLCanvasElement | null>(null); 
+    const hiddencanvasRef = useRef<HTMLCanvasElement | null>(null); 
     const [openCamera, setOpenCamera] = useState(true); 
-    const [image, setImage] = useState(""); 
     const [animal, setAnimal] = useState("cat"); 
-    const [connection, setConnection] = useState(null);
+    
+    // Keep canvas size constant from initial mount
+    const [canvasWidth] = useState<number>(() => Math.max(0, window.innerWidth - 80));
+    const [canvasHeight] = useState<number>(() => Math.max(0, window.innerHeight - 80));
+    // Track orientation to rotate visible canvas accordingly
+    const [orientationDeg, setOrientationDeg] = useState<number>(0);
+
+    const getOrientationAngle = (): number => {
+        const screenOrientation = window.screen?.orientation;
+        let angle = 0;
+        if (screenOrientation && typeof screenOrientation.angle === 'number') {
+            angle = screenOrientation.angle;
+        } else {
+            const legacy = (window as unknown as { orientation?: number }).orientation;
+            if (typeof legacy === 'number') {
+                angle = legacy;
+            } else {
+                angle = window.innerWidth > window.innerHeight ? 90 : 0;
+            }
+        }
+        angle = ((Math.round(angle / 90) * 90) % 360 + 360) % 360;
+        return angle;
+    };
+
+    useEffect(() => {
+        const updateOrientation = () => setOrientationDeg(getOrientationAngle());
+        updateOrientation();
+        window.addEventListener('orientationchange', updateOrientation);
+        window.addEventListener('resize', updateOrientation);
+        return () => {
+            window.removeEventListener('orientationchange', updateOrientation);
+            window.removeEventListener('resize', updateOrientation);
+        };
+    }, []);
  
-    function drawImg(imageurl) {
-        console.log(imageurl)
+    function drawImg(imageurl: { image?: string }) {
         const canvas = canvasRef.current;
+        if (!canvas) return;
         const canvasctx = canvas.getContext("2d");
+        if (!canvasctx) return;
         const imager = imageurl['image'];
         const img = new Image();
         img.onload = function() {
             canvasctx.drawImage(img, 0, 0);
         };
-        img.src = imager;
+        if (imager) img.src = imager;
     }
 
     useEffect( () => {
@@ -43,19 +76,22 @@ function Picture() {
                 video: { facingMode: 'environment' },
                 audio: false
               });
-            videoPlayerRef.current.srcObject = stream;
+            if (videoPlayerRef.current) {
+                videoPlayerRef.current.srcObject = stream;
+            }
         } catch (error) {
-            console.error("ERROR HER");
+            console.error("ERROR HER", error);
         }
     }
 
     const captureImage = () => {
         const hiddencanvas = hiddencanvasRef.current;
         const video = videoPlayerRef.current;
-        if (video){
+        if (video && hiddencanvas){
             const ctx = hiddencanvas.getContext("2d");
+            if (!ctx) return;
             ctx.drawImage(video, 0, 0, hiddencanvas.width, hiddencanvas.height); 
-            const image = hiddencanvas.toDataURL("image/png") //.replace("image/png", "image/octet-stream");
+            const image = hiddencanvas.toDataURL("image/png");
             fetch("https://animal.yoshixi.net/getpic", {
                 method: "POST",
                 headers: {
@@ -76,7 +112,7 @@ function Picture() {
         }
     }
 
-    function shootAnimal(animal){
+    function shootAnimal(animal: string){
         setAnimal(animal)
         captureImage()
     }
@@ -91,18 +127,18 @@ function Picture() {
             autoPlay
         ></video>
         <canvas
-            className="border-2 border-black rounded-lg absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
+            className={`border-2 border-black rounded-lg absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 ${orientationDeg === 90 ? '-rotate-90' : orientationDeg === 180 ? 'rotate-180' : orientationDeg === 270 ? 'rotate-90' : 'rotate-0'}`}
             id="canvas"
             ref={canvasRef}
-            height={window.innerHeight - 80}
-            width={window.innerWidth - 80}
+            height={canvasHeight}
+            width={canvasWidth}
         ></canvas>
         <canvas
             className="hidden"
             id="hiddencanvas"
             ref={hiddencanvasRef}
-            height={window.innerHeight - 80}
-            width={window.innerWidth - 80}
+            height={canvasHeight}
+            width={canvasWidth}
         ></canvas>
 
         </div>
@@ -110,9 +146,9 @@ function Picture() {
             <FontAwesomeIcon icon={faBackward} />
             Back
         </button>
-        <div className="bottom-0 h-20 flex flex-row absolute w-screen justify-center">
+        <div className="w-screen py-4 grid grid-flow-col grid-rows-2 auto-cols-max gap-3 justify-center">
            <button 
-               className={`w-20 rounded-sm border-2 mx-5 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+               className={`z-10 w-20 rounded-sm border-2 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
                    animal === "human" ? "bg-amber-300" : "bg-amber-500"
                }`} 
                onClick={ () => {shootAnimal("human")}}
@@ -120,7 +156,7 @@ function Picture() {
                Human
            </button> 
            <button 
-               className={`w-20 rounded-sm border-2 mx-5 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+               className={`z-10 w-20 rounded-sm border-2 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
                    animal === "cat" ? "bg-amber-300" : "bg-amber-500"
                }`} 
                onClick={ () => {shootAnimal("cat")}}
@@ -128,7 +164,7 @@ function Picture() {
                Cat
            </button> 
            <button 
-               className={`w-20 rounded-sm border-2 mx-5 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+               className={`z-10 w-20 rounded-sm border-2 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
                    animal === "dog" ? "bg-amber-300" : "bg-amber-500"
                }`} 
                onClick={ () => {shootAnimal("dog")}}
@@ -136,7 +172,7 @@ function Picture() {
                Dog
            </button> 
            <button 
-               className={`w-20 rounded-sm border-2 mx-5 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+               className={`z-10 w-20 rounded-sm border-2 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
                    animal === "cow" ? "bg-amber-300" : "bg-amber-500"
                }`} 
                onClick={ () => {shootAnimal("cow")}}
@@ -144,7 +180,7 @@ function Picture() {
                Cow
            </button> 
            <button 
-               className={`w-20 rounded-sm border-2 mx-5 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+               className={`z-10 w-20 rounded-sm border-2 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
                    animal === "goat" ? "bg-amber-300" : "bg-amber-500"
                }`} 
                onClick={ () => {shootAnimal("goat")}}
@@ -152,7 +188,7 @@ function Picture() {
                Goat
            </button> 
            <button 
-               className={`w-20 rounded-sm border-2 mx-5 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+               className={`z-10 w-20 rounded-sm border-2 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
                    animal === "pig" ? "bg-amber-300" : "bg-amber-500"
                }`} 
                onClick={ () => {shootAnimal("pig")}}
@@ -160,7 +196,7 @@ function Picture() {
                Pig
            </button> 
            <button 
-               className={`w-20 rounded-sm border-2 mx-5 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+               className={`z-10 w-20 rounded-sm border-2 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
                    animal === "sheep" ? "bg-amber-300" : "bg-amber-500"
                }`} 
                onClick={ () => {shootAnimal("sheep")}}

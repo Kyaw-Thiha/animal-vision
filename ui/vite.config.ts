@@ -41,10 +41,10 @@ export default defineConfig({
     })
   ],
   server:{
-    allowedHosts : ["3bfb4efe4ad0.ngrok-free.app"],
+    allowedHosts : ["6c9eb49ca71b.ngrok-free.app"],
     proxy: {
       "/getpic": {
-        target: "http://127.0.0.1:8000",
+        target: "https://animal.yoshixi.net",
         changeOrigin: true,
         secure: false
       }

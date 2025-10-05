@@ -7,6 +7,7 @@ sys.path.append("../")
 from utils import processimage, processsplitimage
 import asyncio
 from typing import Dict, List, Tuple
+from geminiutils import promptmodel
 from collections import deque
 
 app = FastAPI()
@@ -85,6 +86,11 @@ async def getpic(payload: PostImageRequest):
     print(payload)
     processed = processsplitimage(payload.image, payload.animal)
     return {"image": processed}
+
+@app.post("/gettip")
+async def gettip(animal : str):
+    return ""
+    #return promptmodel(f"Provide a short fact about the eyes and vision of {animal}")
 
 if __name__ == "__main__":
     import uvicorn

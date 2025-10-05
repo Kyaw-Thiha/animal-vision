@@ -70,6 +70,7 @@ kangaroofilter = Kangaroo()
 tigerfilter = Tiger()
 rabbitfilter = Rabbit()
 pandafilter = Panda()
+honeybeefilter = HoneyBee()
 
 
 def processimage(imagedata: bytes, animal: str) -> str:
@@ -127,6 +128,8 @@ def processimage(imagedata: bytes, animal: str) -> str:
             mmat = kangaroofilter.visualize(img)[1]
         case "tiger":
             mmat = tigerfilter.visualize(img)[1]
+        case "honeybee":
+            mmat = honeybeefilter.visualize(img)[1]
         case _:
             print("no case implemented here")
     # convert mmat into blob, to make base64 URI

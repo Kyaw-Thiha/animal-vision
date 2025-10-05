@@ -1,4 +1,5 @@
 import numpy as np
+import cv2
 
 
 def srgb_to_linear(x: np.ndarray) -> np.ndarray:
@@ -37,7 +38,6 @@ def check_input_image(image: np.ndarray) -> bool:
         return False
 
     return True
-
 
 def get_normalized_image(image: np.ndarray) -> np.ndarray:
     """
@@ -85,3 +85,91 @@ def merge_L_M(image_in_LMS: np.ndarray, alpha: float) -> np.ndarray:
 
     LM = alpha * image_in_LMS[:, 0] + (1.0 - alpha) * image_in_LMS[:, 1]
     return np.stack([LM, LM, image_in_LMS[:, 2]], axis=1)
+
+def collapse_LMS_matrix(alpha: float, s_scale: float) -> np.ndarray:
+    """
+    Build a 3x3 *RGB-linear -> RGB-linear* transform that:
+      - merges L & M as: LM = alpha*L + (1-alpha)*M
+      - applies S attenuation by s_scale
+    Implementation trick: transform the RGB basis through LMS, apply collapse, go back to RGB.
+    """
+
+    # 3x3 identity as three basis RGB vectors in linear space
+    E = np.eye(3, dtype=np.float32)         # shape (3,3)
+
+    # RGB -> LMS
+    LMS = sRGB_to_LMS(E)                    # (3,3), rows are RGB basis expressed in LMS
+
+    # Apply collapse with a simple 3x3 on LMS rows:
+    # [LM, LM, s*S] where LM = alpha*L + (1-alpha)*M
+    D = np.array(
+        [
+            [alpha,         1.0 - alpha, 0.0],
+            [alpha,         1.0 - alpha, 0.0],
+            [0.0,           0.0,         s_scale],
+        ],
+        dtype=np.float32,
+    )
+    LMS_collapsed = LMS @ D.T               # still (3,3)
+
+    # Back to RGB
+    RGB_out = LMS_to_RGB(LMS_collapsed)     # (3,3)
+
+    # Columns of the resulting 3x3 are exactly the transformed basis vectors.
+    # We return a float32 3x3 so you can do: pixels @ T.T
+    return RGB_out.astype(np.float32)
+
+def apply_acuity_blur(image: np.ndarray, sigma: float = 1.5) -> np.ndarray:
+    """
+    Apply Gaussian blur to simulate reduced visual acuity.
+
+    Parameters
+    ----------
+    image : np.ndarray
+        Input HxWx3 RGB image (float or uint8).
+    sigma : float
+        Blur strength. Higher sigma = blurrier vision.
+
+    Returns
+    -------
+    np.ndarray
+        Blurred image, same dtype as input.
+    """
+
+    if image.ndim != 3 or image.shape[2] != 3:
+        raise ValueError("Expected HxWx3 image")
+
+    dtype = image.dtype
+    image_f = image.astype(np.float32, copy=False) if np.issubdtype(dtype, np.integer) else image
+    # <- key change: let OpenCV pick kernel size from sigma
+    blurred = cv2.GaussianBlur(image_f, (0, 0), sigmaX=sigma, sigmaY=sigma)
+    return blurred.astype(dtype, copy=False)
+
+
+def apply_anisotropic_acuity_blur_with_streak(image, *, y_center: float = 0.5,
+                                         sigma_streak: float = 0.8,
+                                         sigma_far: float = 2.2,
+                                         falloff: float = 6.0):
+    """
+    Preserve acuity near a horizontal 'visual streak' at y_center (0..1).
+    Blur increases smoothly away from that band; horizontal pupil → more vertical blur.
+    """
+    import cv2, numpy as np
+    H = image.shape[0]
+    yy = np.linspace(0, 1, H, dtype=np.float32)[:, None]
+    d = np.abs(yy - y_center)                             # distance from streak
+    # smoothly vary sigma between streak and far
+    sigma_map = sigma_streak + (sigma_far - sigma_streak) * (1.0 - np.exp(-falloff * d**2))
+    # vertical (sigmaY) > horizontal (sigmaX) to emulate horizontal slit pupil
+    sigmaY = sigma_map
+    sigmaX = np.maximum(0.4, 0.5 * sigma_map)
+
+    # separable blur row-by-row with per-row sigmas
+    out = image.astype(np.float32, copy=False)
+    tmp = np.empty_like(out)
+    for y in range(H):
+        tmp[y] = cv2.GaussianBlur(out[y], (0,0), sigmaX=float(sigmaX[y,0]), sigmaY=0.0)
+    for y in range(H):
+        out[y] = cv2.GaussianBlur(tmp[y], (0,0), sigmaX=0.0, sigmaY=float(sigmaY[y,0]))
+    return out.astype(image.dtype, copy=False)
+

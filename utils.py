@@ -71,6 +71,21 @@ tigerfilter = Tiger()
 rabbitfilter = Rabbit()
 pandafilter = Panda()
 honeybeefilter = HoneyBee()
+reindeerfilter = Reindeer()
+ratuvfilter = RatUV()
+goldfishfilter = Goldfish()
+damselfishfilter = Damselfish()
+anablepsfilter = Anableps()
+anchovyfilter = Anchovy()
+guppyfilter = Guppy()
+morphofilter = Morpho()
+heliconiusfilter = Heliconius()
+pierisfilter = Pieris()
+mantisshrimpfilter = MantisShrimp()
+kestrelfilter = Kestrel()
+jumpingspiderfilter = JumpingSpider()
+dragonflyfilter = Dragonfly()
+hummingbirdfilter = Hummingbird()
 
 
 def processimage(imagedata: bytes, animal: str) -> str:
@@ -221,6 +236,51 @@ def processsplitimage(imagedata: bytes, animal: str) -> str:
             mmat = renderer.make_split_frame(orig, modified)
         case "honeybee":
             orig, modified = honeybeefilter.visualize(img)
+            mmat = renderer.make_split_frame(orig, modified)
+        case "reindeer":
+            orig, modified = reindeerfilter.visualize(img)
+            mmat = renderer.make_split_frame(orig, modified)
+        case "ratuv":
+            orig, modified = ratuvfilter.visualize(img)
+            mmat = renderer.make_split_frame(orig, modified)
+        case "goldfish":
+            orig, modified = goldfishfilter.visualize(img)
+            mmat = renderer.make_split_frame(orig, modified)
+        case "damselfish":
+            orig, modified = damselfishfilter.visualize(img)
+            mmat = renderer.make_split_frame(orig, modified)
+        case "anableps":
+            orig, modified = anablepsfilter.visualize(img)
+            mmat = renderer.make_split_frame(orig, modified)
+        case "anchovy":
+            orig, modified = anchovyfilter.visualize(img)
+            mmat = renderer.make_split_frame(orig, modified)
+        case "guppy":
+            orig, modified = guppyfilter.visualize(img)
+            mmat = renderer.make_split_frame(orig, modified)
+        case "morpho":
+            orig, modified = morphofilter.visualize(img)
+            mmat = renderer.make_split_frame(orig, modified)
+        case "heliconius":
+            orig, modified = heliconiusfilter.visualize(img)
+            mmat = renderer.make_split_frame(orig, modified)
+        case "pieris":
+            orig, modified = pierisfilter.visualize(img)
+            mmat = renderer.make_split_frame(orig, modified)
+        case "mantisshrimp":
+            orig, modified = mantisshrimpfilter.visualize(img)
+            mmat = renderer.make_split_frame(orig, modified)
+        case "kestrel":
+            orig, modified = kestrelfilter.visualize(img)
+            mmat = renderer.make_split_frame(orig, modified)
+        case "jumpingspider":
+            orig, modified = jumpingspiderfilter.visualize(img)
+            mmat = renderer.make_split_frame(orig, modified)
+        case "dragonfly":
+            orig, modified = dragonflyfilter.visualize(img)
+            mmat = renderer.make_split_frame(orig, modified)
+        case "hummingbird":
+            orig, modified = hummingbirdfilter.visualize(img)
             mmat = renderer.make_split_frame(orig, modified)
         case _:
             print("no case implemented here")

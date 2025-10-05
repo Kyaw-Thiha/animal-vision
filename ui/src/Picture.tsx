@@ -203,6 +203,128 @@ function Picture() {
            >
                Sheep
            </button> 
+           <button 
+               className={`z-10 w-28 rounded-sm border-2 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+                   animal === "hummingbird" ? "bg-amber-300" : "bg-amber-500"
+               }`} 
+               onClick={ () => {shootAnimal("hummingbird")}}
+           >
+               Hummingbird
+           </button> 
+           <button 
+               className={`z-10 w-28 rounded-sm border-2 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+                   animal === "reindeer" ? "bg-amber-300" : "bg-amber-500"
+               }`} 
+               onClick={ () => {shootAnimal("reindeer")}}
+           >
+               Reindeer
+           </button> 
+           <button 
+               className={`z-10 w-28 rounded-sm border-2 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+                   animal === "ratuv" ? "bg-amber-300" : "bg-amber-500"
+               }`} 
+               onClick={ () => {shootAnimal("ratuv")}}
+           >
+               RatUV
+           </button> 
+           <button 
+               className={`z-10 w-28 rounded-sm border-2 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+                   animal === "goldfish" ? "bg-amber-300" : "bg-amber-500"
+               }`} 
+               onClick={ () => {shootAnimal("goldfish")}}
+           >
+               Goldfish
+           </button> 
+           <button 
+               className={`z-10 w-28 rounded-sm border-2 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+                   animal === "damselfish" ? "bg-amber-300" : "bg-amber-500"
+               }`} 
+               onClick={ () => {shootAnimal("damselfish")}}
+           >
+               Damselfish
+           </button> 
+        </div>
+        <div className="w-screen py-2 grid grid-flow-col grid-rows-2 auto-cols-max gap-3 justify-center">
+           <button 
+               className={`z-10 w-28 rounded-sm border-2 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+                   animal === "anableps" ? "bg-amber-300" : "bg-amber-500"
+               }`} 
+               onClick={ () => {shootAnimal("anableps")}}
+           >
+               Anableps
+           </button> 
+           <button 
+               className={`z-10 w-28 rounded-sm border-2 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+                   animal === "anchovy" ? "bg-amber-300" : "bg-amber-500"
+               }`} 
+               onClick={ () => {shootAnimal("anchovy")}}
+           >
+               Anchovy
+           </button> 
+           <button 
+               className={`z-10 w-28 rounded-sm border-2 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+                   animal === "guppy" ? "bg-amber-300" : "bg-amber-500"
+               }`} 
+               onClick={ () => {shootAnimal("guppy")}}
+           >
+               Guppy
+           </button> 
+           <button 
+               className={`z-10 w-28 rounded-sm border-2 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+                   animal === "morpho" ? "bg-amber-300" : "bg-amber-500"
+               }`} 
+               onClick={ () => {shootAnimal("morpho")}}
+           >
+               Morpho
+           </button> 
+           <button 
+               className={`z-10 w-28 rounded-sm border-2 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+                   animal === "heliconius" ? "bg-amber-300" : "bg-amber-500"
+               }`} 
+               onClick={ () => {shootAnimal("heliconius")}}
+           >
+               Heliconius
+           </button> 
+           <button 
+               className={`z-10 w-28 rounded-sm border-2 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+                   animal === "pieris" ? "bg-amber-300" : "bg-amber-500"
+               }`} 
+               onClick={ () => {shootAnimal("pieris")}}
+           >
+               Pieris
+           </button> 
+           <button 
+               className={`z-10 w-28 rounded-sm border-2 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+                   animal === "mantisshrimp" ? "bg-amber-300" : "bg-amber-500"
+               }`} 
+               onClick={ () => {shootAnimal("mantisshrimp")}}
+           >
+               Mantis Shrimp
+           </button> 
+           <button 
+               className={`z-10 w-28 rounded-sm border-2 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+                   animal === "kestrel" ? "bg-amber-300" : "bg-amber-500"
+               }`} 
+               onClick={ () => {shootAnimal("kestrel")}}
+           >
+               Kestrel
+           </button> 
+           <button 
+               className={`z-10 w-28 rounded-sm border-2 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+                   animal === "jumpingspider" ? "bg-amber-300" : "bg-amber-500"
+               }`} 
+               onClick={ () => {shootAnimal("jumpingspider")}}
+           >
+               Jumping Spider
+           </button> 
+           <button 
+               className={`z-10 w-28 rounded-sm border-2 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+                   animal === "dragonfly" ? "bg-amber-300" : "bg-amber-500"
+               }`} 
+               onClick={ () => {shootAnimal("dragonfly")}}
+           >
+               Dragonfly
+           </button> 
         </div>
         </>
     )

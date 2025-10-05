@@ -2,7 +2,7 @@ click==8.2.1
 inquirerpy==0.3.4
 markdown-it-py==4.0.0
 mdurl==0.1.2
-numpy==2.3.2
+numpy
 pfzy==0.3.4
 prompt_toolkit==3.0.51
 Pygments==2.19.2
@@ -14,3 +14,15 @@ typer==0.16.0
 typing_extensions==4.14.1
 wcwidth==0.2.13
 opencv-contrib-python
+
+# ML Requirements
+# opencv-python==4.4.0.46
+einops
+torchvision
+torch
+scipy
+h5py
+hdf5storage
+tqdm
+
+

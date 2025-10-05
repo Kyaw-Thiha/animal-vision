@@ -72,6 +72,48 @@ rabbitfilter = Rabbit()
 pandafilter = Panda()
 
 
+animal_choices = [
+    {"name": "Cat", "value": Cat()},
+    {"name": "Dog", "value": Dog()},
+    {"name": "Sheep", "value": Sheep()},
+    {"name": "Pig", "value": Pig()},
+    {"name": "Goat", "value": Goat()},
+    {"name": "Cow", "value": Cow()},
+    {"name": "Horse", "value": Horse()},
+    {"name": "Rabbit", "value": Rabbit()},
+    {"name": "Panda", "value": Panda()},
+    {"name": "Squirrel", "value": Squirrel()},
+    {"name": "Elephant", "value": Elephant()},
+    {"name": "Lion", "value": Lion()},
+    {"name": "Wolf", "value": Wolf()},
+    {"name": "Fox", "value": Fox()},
+    {"name": "Bear", "value": Bear()},
+    {"name": "Raccoon", "value": Raccoon()},
+    {"name": "Deer", "value": Deer()},
+    {"name": "Kangaroo", "value": Kangaroo()},
+    {"name": "Tiger", "value": Tiger()},
+    {"name": "Rat", "value": Rat()},
+    # UV based animals
+    {"name": "HoneyBee", "value": HoneyBee()},
+    {"name": "ReinDeer", "value": Reindeer()},
+    {"name": "RatUV", "value": RatUV()},
+    {"name": "GoldFish", "value": Goldfish()},
+    {"name": "DamselFish", "value": Damselfish()},
+    {"name": "Anableps (Four-eyed fish)", "value": Anableps()},
+    {"name": "Northern Anchovy Fish", "value": Anchovy()},
+    {"name": "Guppy Fish", "value": Guppy()},
+    {"name": "Morpho Butterfly", "value": Morpho()},
+    {"name": "Heliconius Butterfly", "value": Heliconius()},
+    {"name": "Pieris Butterfly", "value": Pieris()},
+    # UV Unique Animals
+    {"name": "Mantis Shrimp", "value": MantisShrimp()},
+    {"name": "Kestrel", "value": Kestrel()},
+    {"name": "Jumping Spider", "value": JumpingSpider()},
+    {"name": "DragonFly", "value": Dragonfly()},
+    {"name": "HummingBird", "value": Hummingbird()},
+]
+
+
 def processimage(imagedata: bytes, animal: str) -> str:
     """
     Takes the raw bytes of a image, and returns the specific animal it wants

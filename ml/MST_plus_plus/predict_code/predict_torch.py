@@ -65,42 +65,216 @@ def _merge_tiles_row_major(tiles: List[np.ndarray], grid: Tuple[int, int]) -> np
 # ----------------------------- main predictor -----------------------------
 
 
+def _hann2d(h: int, w: int) -> np.ndarray:
+    wy = 0.5 - 0.5 * np.cos(2 * np.pi * np.linspace(0, 1, h, dtype=np.float32))
+    wx = 0.5 - 0.5 * np.cos(2 * np.pi * np.linspace(0, 1, w, dtype=np.float32))
+    return (wy[:, None] * wx[None, :]).astype(np.float32)
+
+
+def _tile_coords(H: int, W: int, tile: int, overlap: int) -> List[Tuple[int, int, int, int]]:
+    """Yield tiles as (y0, y1, x0, x1) covering the image with given overlap."""
+    stride = tile - overlap
+    ys = list(range(0, max(1, H - tile + 1), stride))
+    xs = list(range(0, max(1, W - tile + 1), stride))
+    if not ys or ys[-1] != H - tile:
+        ys.append(max(0, H - tile))
+    if not xs or xs[-1] != W - tile:
+        xs.append(max(0, W - tile))
+    coords = []
+    for y0 in ys:
+        for x0 in xs:
+            y1 = min(y0 + tile, H)
+            x1 = min(x0 + tile, W)
+            # ensure exact tile size by extending backwards when at border
+            if (y1 - y0) < tile and H >= tile:
+                y0 = y1 - tile
+            if (x1 - x0) < tile and W >= tile:
+                x0 = x1 - tile
+            coords.append((y0, y0 + tile if H >= tile else y1, x0, x0 + tile if W >= tile else x1))
+    return coords
+
+
+def _try_full_frame_once(
+    model: nn.Module,
+    x_hw3: np.ndarray,
+    *,
+    device: torch.device,
+    use_autocast: bool,
+) -> Optional[np.ndarray]:
+    """Try single-shot inference. Return HxWxC or None on OOM."""
+    x_chw = x_hw3.transpose(2, 0, 1)[None, ...]  # 1x3xH×W
+    t = torch.from_numpy(x_chw).to(device).float()
+    try:
+        with torch.inference_mode():
+            ctx = torch.cuda.amp.autocast(enabled=(use_autocast and device.type == "cuda"), dtype=torch.float16)
+            with ctx:
+                y = model(t)  # 1xC×H×W or 1xH×W×C
+        if y.dim() != 4:
+            raise RuntimeError(f"Model output must be 4D; got {tuple(y.shape)}")
+        _, d1, d2, d3 = y.shape
+        Ht, Wt = t.shape[-2], t.shape[-1]
+        if d2 == Ht and d3 == Wt:
+            y = y.permute(0, 2, 3, 1)  # 1xH×W×C
+        # else assume already NHWC
+        hsi = y[0].detach().float().cpu().numpy()
+        return hsi
+    except RuntimeError as e:
+        # Only treat CUDA OOM as a signal to tile
+        msg = str(e).lower()
+        if "out of memory" in msg or "cuda oom" in msg:
+            if device.type == "cuda":
+                torch.cuda.empty_cache()
+            return None
+        raise
+
+
+def _run_tile(
+    model: nn.Module,
+    tile_hw3: np.ndarray,
+    *,
+    device: torch.device,
+    use_autocast: bool,
+) -> np.ndarray:
+    """Run model on a single tile (H×W×3) and return H×W×C on CPU."""
+    x_chw = tile_hw3.transpose(2, 0, 1)[None, ...]
+    t = torch.from_numpy(x_chw).to(device).float()
+    with torch.inference_mode():
+        ctx = torch.cuda.amp.autocast(enabled=(use_autocast and device.type == "cuda"), dtype=torch.float16)
+        with ctx:
+            y = model(t)
+        if y.dim() != 4:
+            raise RuntimeError(f"Model output must be 4D; got {tuple(y.shape)}")
+        _, d1, d2, d3 = y.shape
+        Ht, Wt = t.shape[-2], t.shape[-1]
+        if d2 == Ht and d3 == Wt:
+            y = y.permute(0, 2, 3, 1)
+        hsi = y[0].detach().float().cpu().numpy()
+    return hsi
+
+
+def _predict_one_image_with_auto_tiling(
+    model: nn.Module,
+    img_hw3: np.ndarray,
+    *,
+    device: torch.device,
+    stride_multiple: int,
+    prefer_autocast_fp16: bool,
+    start_tile: int = 1024,
+    min_tile: int = 256,
+    overlap: int = 64,
+) -> np.ndarray:
+    """
+    Try full frame; if OOM → try tiles (1024→768→512→384→256). Blend with Hann.
+    """
+
+    # optional pad to stride multiple (downsampling friendliness)
+    def pad_to_mult(x: np.ndarray, mult: int) -> Tuple[np.ndarray, Tuple[int, int, int, int]]:
+        H, W = x.shape[:2]
+        if mult is None or mult <= 0:
+            return x, (0, 0, 0, 0)
+        Hn = ((H + mult - 1) // mult) * mult
+        Wn = ((W + mult - 1) // mult) * mult
+        py, px = Hn - H, Wn - W
+        if py == 0 and px == 0:
+            return x, (0, 0, 0, 0)
+        top, bot = py // 2, py - py // 2
+        left, right = px // 2, px - px // 2
+        x_pad = np.pad(x, ((top, bot), (left, right), (0, 0)), mode="reflect")
+        return x_pad, (top, bot, left, right)
+
+    def crop_pads(x: np.ndarray, pads: Tuple[int, int, int, int]) -> np.ndarray:
+        top, bot, left, right = pads
+        H, W = x.shape[:2]
+        return x[top : H - bot if bot else H, left : W - right if right else W, :]
+
+    x = _to_float01(img_hw3)
+    x, pads = pad_to_mult(x, stride_multiple)
+
+    # 1) Try full frame once
+    hsi = _try_full_frame_once(model, x, device=device, use_autocast=prefer_autocast_fp16)
+    if hsi is not None:
+        out = crop_pads(hsi, pads) if pads != (0, 0, 0, 0) else hsi
+        return out.astype(np.float32, copy=False)
+
+    # 2) Auto-tiling attempts
+    H, W = x.shape[:2]
+    candidate_tiles = [start_tile, 768, 512, 384, 256]
+    candidate_tiles = [t for t in candidate_tiles if t >= min_tile]
+    hann_cache = {}
+
+    for tile in candidate_tiles:
+        try:
+            coords = _tile_coords(H, W, tile, overlap)
+            # feather window (cache)
+            if tile not in hann_cache:
+                hw = _hann2d(tile, tile)[..., None]
+                hann_cache[tile] = hw
+            hann = hann_cache[tile]
+
+            # allocate CPU accumulators
+            # run one tile to discover C
+            y0, y1, x0, x1 = coords[0]
+            pred0 = _run_tile(model, x[y0:y1, x0:x1, :], device=device, use_autocast=prefer_autocast_fp16)
+            C = pred0.shape[2]
+            out_accum = np.zeros((H, W, C), dtype=np.float32)
+            w_accum = np.zeros((H, W, C), dtype=np.float32)
+
+            # place first
+            w = hann if C == 1 else np.repeat(hann, C, axis=2)
+            out_accum[y0:y1, x0:x1, :] += pred0 * w
+            w_accum[y0:y1, x0:x1, :] += w
+
+            # remaining tiles
+            for yy0, yy1, xx0, xx1 in coords[1:]:
+                pred = _run_tile(model, x[yy0:yy1, xx0:xx1, :], device=device, use_autocast=prefer_autocast_fp16)
+                out_accum[yy0:yy1, xx0:xx1, :] += pred * w
+                w_accum[yy0:yy1, xx0:xx1, :] += w
+
+            stitched = out_accum / np.maximum(w_accum, 1e-8)
+            out = crop_pads(stitched, pads) if pads != (0, 0, 0, 0) else stitched
+            return out.astype(np.float32, copy=False)
+
+        except RuntimeError as e:
+            msg = str(e).lower()
+            if "out of memory" in msg and device.type == "cuda":
+                torch.cuda.empty_cache()
+                continue  # try smaller tile
+            raise  # other errors bubble up
+
+    raise RuntimeError(
+        "CUDA OOM even with smallest tile. Try: smaller image, reduce stride_multiple, set half=True (autocast), or run on CPU."
+    )
+
+
 def predict_rgb_to_hsi_torch(
     images: Union[np.ndarray, List[np.ndarray]],
     method: str,
     checkpoint: str,
     *,
-    stride: int = 16,  # set 0/None to disable; use 8/16 to match net downsampling
+    stride: int = 16,  # pad H/W to multiple of this before inference (for downsampling nets)
     device: Optional[str] = None,  # 'cuda'/'cpu'/None(auto)
-    half: bool = False,  # FP16 on CUDA (keep False on CPU)
+    half: bool = True,  # use autocast FP16 on CUDA by default (safe & VRAM friendly)
     strict_load: bool = False,
     grid: Optional[Tuple[int, int]] = None,  # used when a list is passed (row-major)
+    start_tile: int = 1024,
+    min_tile: int = 256,
+    overlap: int = 64,
 ) -> np.ndarray:
     """
-    Run the MST++ PyTorch module directly and return a SINGLE HxWxC float32 array.
-      - Single RGB image → returns its HSI.
-      - List of RGB tiles → merges their HSIs into one image (row-major order).
+    Auto memory-aware predictor:
+      - Try full-frame once; on OOM auto-tiles with overlap+Hann.
+      - Always returns a SINGLE HxWxC float32 array.
     """
-    # Device resolve
+    # Device
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
     dev = torch.device(device)
-    if half and dev.type != "cuda":
-        print("[TorchPredict][INFO] 'half=True' ignored on CPU.")
-        half = False
 
-    # Build model and load weights
-    model = model_generator(method, checkpoint)
-    model = model.to(dev)
-    if half:
-        try:
-            model.half()
-        except Exception:
-            print("[TorchPredict][WARN] Model does not support .half(); using FP32.")
-            half = False
-    model.eval()
+    # Model
+    torch.backends.cudnn.benchmark = True  # speed for convs
+    model = model_generator(method, checkpoint).to(dev).eval()
 
-    # Normalize input(s)
+    # Inputs → list
     if isinstance(images, np.ndarray):
         imgs = [images]
         merging = False
@@ -108,48 +282,29 @@ def predict_rgb_to_hsi_torch(
         imgs = list(images)
         merging = True
 
-    hsi_tiles: List[np.ndarray] = []
-    with torch.no_grad():
-        for im in imgs:
-            x = _to_float01(im)
-            pads = (0, 0, 0, 0)
-            if stride and stride > 0:
-                x, pads = _pad_to_multiple_reflect(x, stride)
-
-            # HWC float32/16 -> NCHW torch
-            x_chw = x.transpose(2, 0, 1)  # 3xH'xW'
-            t = torch.from_numpy(x_chw).unsqueeze(0).to(dev)  # 1x3xH'xW'
-            t = t.half() if half else t.float()
-
-            # forward
-            y: torch.Tensor = model(t)  # expect 1xC_hsi x H' x W' or 1xH' x W' x C_hsi
-            if y.dim() != 4:
-                raise RuntimeError(f"Model output must be 4D; got {tuple(y.shape)}")
-
-            # Try to detect layout: NCHW vs NHWC
-            _, d1, d2, d3 = y.shape
-            Ht, Wt = t.shape[-2], t.shape[-1]
-            if d2 == Ht and d3 == Wt:  # NCHW
-                y_nhwc = y.permute(0, 2, 3, 1)  # 1xH'xW'xC
-            elif d1 == Ht and d2 == Wt:  # NHWC
-                y_nhwc = y  # already 1xH'xW'xC
-            else:
-                # fallback: assume NCHW
-                y_nhwc = y.permute(0, 2, 3, 1)
-
-            hsi = y_nhwc[0].detach().float().cpu().numpy()  # H'xW'xC
-            if stride and pads != (0, 0, 0, 0):
-                hsi = _crop_pads(hsi, pads)
-
-            hsi_tiles.append(hsi.astype(np.float32, copy=False))
+    # Run each image with auto-tiling
+    results: List[np.ndarray] = []
+    for im in imgs:
+        x = _to_float01(im)
+        out = _predict_one_image_with_auto_tiling(
+            model,
+            x,
+            device=dev,
+            stride_multiple=stride,
+            prefer_autocast_fp16=half and (dev.type == "cuda"),
+            start_tile=start_tile,
+            min_tile=min_tile,
+            overlap=overlap,
+        )
+        results.append(out)
 
     if not merging:
-        return hsi_tiles[0]
+        return results[0]
 
-    # Merge tiles: require uniform tile size
-    Hs = {t.shape[0] for t in hsi_tiles}
-    Ws = {t.shape[1] for t in hsi_tiles}
+    # Merge tiles back if a list was passed
+    Hs = {t.shape[0] for t in results}
+    Ws = {t.shape[1] for t in results}
     if len(Hs) != 1 or len(Ws) != 1:
         raise ValueError("All tiles must have the SAME height and width to merge.")
-    rows, cols = grid if grid is not None else _infer_grid(len(hsi_tiles))
-    return _merge_tiles_row_major(hsi_tiles, (rows, cols))
+    rows, cols = grid if grid is not None else _infer_grid(len(results))
+    return _merge_tiles_row_major(results, (rows, cols))

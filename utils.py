@@ -5,10 +5,48 @@ from typing import List, Tuple
 import cv2
 from InquirerPy import inquirer
 
+from animals.anchovy import Anchovy
 from animals.animal import Animal
+from animals.damselfish import Damselfish
+from animals.dragonfly import Dragonfly
+from animals.goldfish import Goldfish
+from animals.guppy import Guppy
+from animals.heliconius import Heliconius
 from animals.honeybee import HoneyBee
+from animals.hummingbird import Hummingbird
+from animals.jumping_spider import JumpingSpider
+from animals.kestrel import Kestrel
+from animals.mantis_shrimp import MantisShrimp
+from animals.morpho import Morpho
+from animals.pieris import Pieris
+from animals.reindeer import Reindeer
 from renderers.video import VideoRenderer
-from animals import Cat, Dog, Sheep, Pig, Goat, Cow, Rat, Horse, Rabbit, Panda, Squirrel, Elephant, Lion, Wolf, Fox, Bear, Raccoon, Deer, Kangaroo, Tiger
+from animals import (
+    Cat,
+    Dog,
+    Sheep,
+    Pig,
+    Goat,
+    Cow,
+    Rat,
+    Horse,
+    Rabbit,
+    Panda,
+    Squirrel,
+    Elephant,
+    Lion,
+    Wolf,
+    Fox,
+    Bear,
+    Raccoon,
+    Deer,
+    Kangaroo,
+    Tiger,
+    Goldfish,
+    RatUV,
+    Damselfish,
+    Anableps,
+)
 
 
 renderer = VideoRenderer()
@@ -33,18 +71,19 @@ tigerfilter = Tiger()
 rabbitfilter = Rabbit()
 pandafilter = Panda()
 
+
 def processimage(imagedata: bytes, animal: str) -> str:
     """
     Takes the raw bytes of a image, and returns the specific animal it wants
     """
     # save image to file, and then convert that file into matrix
-    f = open("temp.jpg", 'wb')
+    f = open("temp.jpg", "wb")
     f.write(imagedata)
     f.close()
-    img = cv2.imread('temp.jpg')
-    #img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    img = cv2.imread("temp.jpg")
+    # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     # apply filters
-    mmat = None 
+    mmat = None
     match animal:
         case "human":
             mmat = img
@@ -92,27 +131,28 @@ def processimage(imagedata: bytes, animal: str) -> str:
             print("no case implemented here")
     # convert mmat into blob, to make base64 URI
     cv2.imwrite(f"tempexport.jpg", mmat)
-    f = open("tempexport.jpg", 'rb')
+    f = open("tempexport.jpg", "rb")
     imgdata = f.read()
     f.close()
-    base64_encoded = base64.b64encode(imgdata).decode('utf-8')
+    base64_encoded = base64.b64encode(imgdata).decode("utf-8")
     data_uri = f"data:image/jpeg;base64,{base64_encoded}"
     return data_uri
 
-def processsplitimage(imagedata : bytes, animal : str) -> str:
+
+def processsplitimage(imagedata: bytes, animal: str) -> str:
     """
     Takes the data URL of a image, and returns the split of a single animal
     """
-    header, encoded = imagedata.split(',', 1)
+    header, encoded = imagedata.split(",", 1)
     contents = base64.b64decode(encoded)
     # save image to file, and then convert that file into matrix
-    f = open("temp.jpg", 'wb')
+    f = open("temp.jpg", "wb")
     f.write(contents)
     f.close()
-    img = cv2.imread('temp.jpg')
-    #img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    img = cv2.imread("temp.jpg")
+    # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     # apply filters
-    mmat = None 
+    mmat = None
     match animal:
         case "human":
             mmat = img
@@ -183,13 +223,13 @@ def processsplitimage(imagedata : bytes, animal : str) -> str:
             print("no case implemented here")
     # convert mmat into blob, to make base64 URI
     cv2.imwrite(f"tempexport.jpg", mmat)
-    f = open("tempexport.jpg", 'rb')
+    f = open("tempexport.jpg", "rb")
     imgdata = f.read()
     f.close()
-    base64_encoded = base64.b64encode(imgdata).decode('utf-8')
+    base64_encoded = base64.b64encode(imgdata).decode("utf-8")
     data_uri = f"data:image/jpeg;base64,{base64_encoded}"
     return data_uri
-    
+
 
 def choose_file(input_dir: str, extensions: Tuple[str, ...]) -> str:
     """
@@ -247,12 +287,10 @@ def choose_animal() -> Animal:
     animal_choices = [
         {"name": "Cat", "value": Cat()},
         {"name": "Dog", "value": Dog()},
-        {"name": "HoneyBee", "value": HoneyBee()},
         {"name": "Sheep", "value": Sheep()},
         {"name": "Pig", "value": Pig()},
         {"name": "Goat", "value": Goat()},
         {"name": "Cow", "value": Cow()},
-        {"name": "Rat", "value": Rat()},
         {"name": "Horse", "value": Horse()},
         {"name": "Rabbit", "value": Rabbit()},
         {"name": "Panda", "value": Panda()},
@@ -266,6 +304,25 @@ def choose_animal() -> Animal:
         {"name": "Deer", "value": Deer()},
         {"name": "Kangaroo", "value": Kangaroo()},
         {"name": "Tiger", "value": Tiger()},
+        {"name": "Rat", "value": Rat()},
+        # UV based animals
+        {"name": "HoneyBee", "value": HoneyBee()},
+        {"name": "ReinDeer", "value": Reindeer()},
+        {"name": "RatUV", "value": RatUV()},
+        {"name": "GoldFish", "value": Goldfish()},
+        {"name": "DamselFish", "value": Damselfish()},
+        {"name": "Anableps (Four-eyed fish)", "value": Anableps()},
+        {"name": "Northern Anchovy Fish", "value": Anchovy()},
+        {"name": "Guppy Fish", "value": Guppy()},
+        {"name": "Morpho Butterfly", "value": Morpho()},
+        {"name": "Heliconius Butterfly", "value": Heliconius()},
+        {"name": "Pieris Butterfly", "value": Pieris()},
+        # UV Unique Animals
+        {"name": "Mantis Shrimp", "value": MantisShrimp()},
+        {"name": "Kestrel", "value": Kestrel()},
+        {"name": "Jumping Spider", "value": JumpingSpider()},
+        {"name": "DragonFly", "value": Dragonfly()},
+        {"name": "HummingBird", "value": Hummingbird()},
     ]
     animal_choice = inquirer.select(  # type: ignore[reportPrivateImportUsage]
         message="Select which animal you want to visualize:",
@@ -274,5 +331,3 @@ def choose_animal() -> Animal:
     ).execute()
 
     return animal_choice
-
-

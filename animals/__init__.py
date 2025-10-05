@@ -1,6 +1,5 @@
 from .cat import Cat
 from .dog import Dog
-from .honeybee import HoneyBee
 from .sheep import Sheep
 from .pig import Pig
 from .cow import Cow
@@ -19,3 +18,15 @@ from .raccoon import Raccoon
 from .deer import Deer
 from .kangaroo import Kangaroo
 from .tiger import Tiger
+
+from .honeybee import HoneyBee
+from .reindeer import Reindeer
+from .rat_uv import RatUV
+from .goldfish import Goldfish
+from .damselfish import Damselfish
+from .anableps import Anableps
+from .anchovy import Anchovy
+from .guppy import Guppy
+from .morpho import Morpho
+from .heliconius import Heliconius
+from .pieris import Pieris

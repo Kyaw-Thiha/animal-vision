@@ -28,6 +28,13 @@ export default defineConfig({
     })
   ],
   server:{
-    allowedHosts : ["3bfb4efe4ad0.ngrok-free.app"]
+    allowedHosts : ["3bfb4efe4ad0.ngrok-free.app"],
+    proxy: {
+      "/getpic": {
+        target: "http://127.0.0.1:8000",
+        changeOrigin: true,
+        secure: false
+      }
+    }
   }
 })

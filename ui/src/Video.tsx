@@ -1,8 +1,12 @@
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faBackward } from '@fortawesome/free-solid-svg-icons'
+import { useNavigate } from 'react-router-dom';
 import "./App.css"
 import {useRef, useState, useEffect, useCallback} from 'react'
 import { io, Socket } from "socket.io-client"
 
 function Video() {
+    const navigate = useNavigate();
     const videoPlayerRef = useRef<HTMLVideoElement>(null); 
     const canvasRef = useRef<HTMLCanvasElement>(null); 
     const hiddencanvasRef = useRef<HTMLCanvasElement>(null); 
@@ -118,6 +122,10 @@ function Video() {
             width={window.innerWidth - 80}
         ></canvas>
 
+        <button className="absolute top-5 left-5 z-10 h-15 w-15 text-amber-500 bg-black border-4 border-amber-500 rounded-sm shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105" onClick={() => {navigate("/")}}>
+            <FontAwesomeIcon icon={faBackward} />
+            Back
+        </button>
         </div>
         <div className="bottom-0 h-20 flex flex-row absolute w-screen justify-center">
            <button 

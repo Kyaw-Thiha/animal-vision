@@ -1,7 +1,11 @@
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faBackward } from '@fortawesome/free-solid-svg-icons'
+import { useNavigate } from 'react-router-dom';
 import "./App.css"
 import {useRef, useState, useEffect} from 'react'
 
 function Picture() {
+    const navigate = useNavigate();
     const videoPlayerRef = useRef(null); 
     const canvasRef = useRef(null); 
     const hiddencanvasRef = useRef(null); 
@@ -11,6 +15,7 @@ function Picture() {
     const [connection, setConnection] = useState(null);
  
     function drawImg(imageurl) {
+        console.log(imageurl)
         const canvas = canvasRef.current;
         const canvasctx = canvas.getContext("2d");
         const imager = imageurl['image'];
@@ -50,20 +55,24 @@ function Picture() {
         if (video){
             const ctx = hiddencanvas.getContext("2d");
             ctx.drawImage(video, 0, 0, hiddencanvas.width, hiddencanvas.height); 
-            //const image = hiddencanvas.toDataURL("image/png") //.replace("image/png", "image/octet-stream");
-            //socket.emit('sendimage', image, animal);
-            console.log('This aintturn out so well')
-            hiddencanvas.toBlob((blob) => {
-                console.log(blob)
-                fetch("127.0.0.1/getpic", {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({image: blob , animal : animal})
-                  })
-                  .then(response => { drawImg(response.json()['image']) } )
-            }, "image/jpeg", 0.8); // JPEG at 80% quality for smaller size
+            const image = hiddencanvas.toDataURL("image/png") //.replace("image/png", "image/octet-stream");
+            fetch("http://127.0.0.1:8000/getpic", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json"
+                },
+                body: JSON.stringify({image: image , animal : animal})
+              })
+              .then(async (response) => {
+                  if (!response.ok) {
+                      throw new Error(`HTTP ${response.status}`)
+                  }
+                  const data = await response.json()
+                  drawImg(data)
+              })
+              .catch(err => {
+                  console.error("Failed to fetch processed image", err)
+              })
         }
     }
 
@@ -97,6 +106,10 @@ function Picture() {
         ></canvas>
 
         </div>
+        <button className="absolute top-5 left-5 z-10 h-15 w-15 text-amber-500 bg-black border-4 border-amber-500 rounded-sm shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105" onClick={() => {navigate("/")}}>
+            <FontAwesomeIcon icon={faBackward} />
+            Back
+        </button>
         <div className="bottom-0 h-20 flex flex-row absolute w-screen justify-center">
            <button 
                className={`w-20 rounded-sm border-2 mx-5 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${

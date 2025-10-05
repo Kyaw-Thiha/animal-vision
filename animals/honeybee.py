@@ -98,15 +98,15 @@ class HoneyBee(Animal):
     def visualize(self, image: np.ndarray) -> Optional[Tuple[np.ndarray, np.ndarray]]:
         """Run the honeybee vision pipeline on an HxWx3 RGB image."""
         # 0) Validate & normalize
-        assert isinstance(input, np.ndarray), "Input must be a numpy ndarray."
-        assert input.ndim == 3 and input.shape[2] == 3, "Input must be HxWx3 RGB."
+        assert isinstance(image, np.ndarray), "Input must be a numpy ndarray."
+        assert image.ndim == 3 and image.shape[2] == 3, "Input must be HxWx3 RGB."
 
-        orig_dtype = input.dtype
-        img = self._to_float01(input)
+        orig_dtype = image.dtype
+        img = self._to_float01(image)
 
         # 1) RGB → HSI via your ML model
         # hsi = predict_rgb_to_hsi(img, self.onnx_path)  # shape (H,W,C_hsi), float32
-        hsi = predict_rgb_to_hsi_torch(img, "mst_plus_plus", "./ml/MST_plus_plus/model_zoo/mst_plus_plus.pth")
+        hsi = predict_rgb_to_hsi_torch(img, "mst_plus_plus", "./ml/MST_plus_plus/model_zoo/mst_plus_plus.pth", overlap=512)
         assert hsi.ndim == 3 and hsi.shape[:2] == img.shape[:2], "HSI must match H and W."
         bands = hsi.shape[2]
         assert bands == len(self.lambdas), f"HSI bands ({bands}) != length of provided band centers ({len(self.lambdas)})."

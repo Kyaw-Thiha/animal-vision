@@ -9,7 +9,7 @@ function Update() {
     const hiddencanvasRef = useRef(null); 
     const [openCamera, setOpenCamera] = useState(true); 
     const [image, setImage] = useState(""); 
-    const [animal, setAnimal] = useState("human"); 
+    const [animal, setAnimal] = useState("cat"); 
     const [connection, setConnection] = useState(null);
    
     socket.on('connect', () => {
@@ -57,7 +57,7 @@ function Update() {
     useEffect(() => {
       const interval = setInterval(() => {
         captureImage()
-      }, 100);
+      }, 200);
     
       return () => clearInterval(interval); // This represents the unmount function, in which you need to clear your interval to prevent memory leaks.
     }, [])
@@ -69,13 +69,12 @@ function Update() {
         if (video){
             const ctx = hiddencanvas.getContext("2d");
             ctx.drawImage(video, 0, 0, hiddencanvas.width, hiddencanvas.height); 
-            const image = hiddencanvas.toDataURL("image/png") //.replace("image/png", "image/octet-stream");
-            socket.emit('sendimage', image, animal);
+            //const image = hiddencanvas.toDataURL("image/png") //.replace("image/png", "image/octet-stream");
+            //socket.emit('sendimage', image, animal);
 
-
-            // canvas.toBlob((blob) => {
-            //     socket.emit('sendimage', blob, animal);
-            // }, "image/jpeg", 0.8); // JPEG at 80% quality for smaller size
+            hiddencanvas.toBlob((blob) => {
+                socket.emit('sendimage', blob, animal);
+            }, "image/jpeg", 0.8); // JPEG at 80% quality for smaller size
         }
     }
 

@@ -1,5 +1,8 @@
 from fastapi import FastAPI
 import socketio
+import sys
+sys.path.append("../")
+from utils import processimage
 import asyncio
 from typing import Dict, List, Tuple
 from collections import deque
@@ -36,9 +39,6 @@ async def connect(sid, environ):
         sio.start_background_task(send_to_client)
         sio._background_task_started = True
 
-def processimage(imagedata: bytes, animal: str) -> bytes:
-    # convert
-    return imagedata
 
 async def send_to_client():
     while True:

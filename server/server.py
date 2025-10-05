@@ -1,13 +1,24 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 import socketio
 import sys
 sys.path.append("../")
-from utils import processimage
+from utils import processimage, processsplitimage
 import asyncio
 from typing import Dict, List, Tuple
 from collections import deque
 
 app = FastAPI()
+
+# Allow web UI to call our REST endpoints during development
+app.add_middleware(
+	CORSMiddleware,
+	allow_origins=["*"],
+	allow_credentials=True,
+	allow_methods=["*"],
+	allow_headers=["*"],
+)
 sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
 socket_app = socketio.ASGIApp(sio, app)
 
@@ -60,10 +71,20 @@ async def send_to_client():
 # uvicorn filename:socket_app --reload
 # app.mount("/", socket_app)
 
-	 
+class PostImageRequest(BaseModel):
+	image: str
+	animal: str
+
+
 @app.get("/")
 def root():
 	return {"conns" : conns}
+
+@app.post("/getpic")
+async def getpic(payload: PostImageRequest):
+    print(payload)
+    processed = processsplitimage(payload.image, payload.animal)
+    return {"image": processed}
 
 if __name__ == "__main__":
     import uvicorn

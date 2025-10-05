@@ -16,10 +16,23 @@ export default defineConfig({
         // caches the assets/icons mentioned (assets/* includes all the assets present in your src/ directory) 
         name: 'Simplifying Progressive Web App',
         short_name: 'PWA Guide',
+        "icons": [
+          {
+            "src": "src/assets/512.png",
+            "type": "image/png",
+            "sizes": "512x512"
+          },
+          {
+            "src": "src/assets/192.png",
+            "type": "image/png",
+            "sizes": "192x192"
+          }
+        ]
         start_url: '/',
         background_color: '#ffffff',
         theme_color: '#000000',
-        icons: []
+        display: "fullscreen",
+        prefer_related_applications : false
       },
       workbox: {
         // defining cached files formats

@@ -7,9 +7,11 @@ from InquirerPy import inquirer
 
 from animals.animal import Animal
 from animals.honeybee import HoneyBee
-
 from animals import Cat, Dog, Sheep, Pig, Goat, Cow
+from renderers.video import VideoRenderer
 
+
+renderer = VideoRenderer()
 catfilter = Cat()
 dogfilter = Dog()
 sheepfilter = Sheep()
@@ -33,7 +35,17 @@ def processimage(imagedata: bytes, animal: str) -> str:
         case "human":
             mmat = img
         case "cat":
-            mmat = catfilter.visualize(img)
+            mmat = catfilter.visualize(img)[1]
+        case "cow":
+            mmat = cowfilter.visualize(img)[1]
+        case "goat":
+            mmat = goatfilter.visualize(img)[1]
+        case "pig":
+            mmat = pigfilter.visualize(img)[1]
+        case "sheep":
+            mmat = sheepfilter.visualize(img)[1]
+        case "dog":
+            mmat = dogfilter.visualize(img)[1]
         case _:
             print("no case implemented here")
     # convert mmat into blob, to make base64 URI
@@ -44,6 +56,48 @@ def processimage(imagedata: bytes, animal: str) -> str:
     base64_encoded = base64.b64encode(imgdata).decode('utf-8')
     data_uri = f"data:image/jpeg;base64,{base64_encoded}"
     return data_uri
+
+def processsplitimage(imagedata : bytes, animal : str) -> str:
+    """
+    Takes the data URL of a image, and returns the split of a single animal
+    """
+    header, encoded = imagedata.split(',', 1)
+    contents = base64.b64decode(encoded)
+    # save image to file, and then convert that file into matrix
+    f = open("temp.jpg", 'wb')
+    f.write(contents)
+    f.close()
+    img = cv2.imread('temp.jpg')
+    #img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    # apply filters
+    mmat = None 
+    match animal:
+        case "human":
+            mmat = img
+        case "cat":
+            orig, modified = catfilter.visualize(img)
+            mmat = renderer.make_split_frame(orig, modified)
+        case "cow":
+            mmat = cowfilter.visualize(img)[1]
+        case "goat":
+            mmat = goatfilter.visualize(img)[1]
+        case "pig":
+            mmat = pigfilter.visualize(img)[1]
+        case "sheep":
+            mmat = sheepfilter.visualize(img)[1]
+        case "dog":
+            mmat = dogfilter.visualize(img)[1]
+        case _:
+            print("no case implemented here")
+    # convert mmat into blob, to make base64 URI
+    cv2.imwrite(f"tempexport.jpg", mmat)
+    f = open("tempexport.jpg", 'rb')
+    imgdata = f.read()
+    f.close()
+    base64_encoded = base64.b64encode(imgdata).decode('utf-8')
+    data_uri = f"data:image/jpeg;base64,{base64_encoded}"
+    return data_uri
+    
 
 def choose_file(input_dir: str, extensions: Tuple[str, ...]) -> str:
     """

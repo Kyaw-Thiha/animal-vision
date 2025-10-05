@@ -5,3 +5,17 @@ from .sheep import Sheep
 from .pig import Pig
 from .cow import Cow
 from .goat import Goat
+from .rat import Rat
+from .horse import Horse
+from .rabbit import Rabbit
+from .panda import Panda
+from .squirrel import Squirrel
+from .elephant import Elephant
+from .lion import Lion
+from .wolf import Wolf
+from .fox import Fox
+from .bear import Bear
+from .raccoon import Raccoon
+from .deer import Deer
+from .kangaroo import Kangaroo
+from .tiger import Tiger

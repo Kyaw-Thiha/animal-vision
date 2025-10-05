@@ -7,9 +7,11 @@ from InquirerPy import inquirer
 
 from animals.animal import Animal
 from animals.honeybee import HoneyBee
-
+from renderers.video import VideoRenderer
 from animals import Cat, Dog, Sheep, Pig, Goat, Cow, Rat, Horse, Rabbit, Panda, Squirrel, Elephant, Lion, Wolf, Fox, Bear, Raccoon, Deer, Kangaroo, Tiger
 
+
+renderer = VideoRenderer()
 catfilter = Cat()
 dogfilter = Dog()
 sheepfilter = Sheep()
@@ -28,6 +30,8 @@ raccoonfilter = Raccoon()
 deerfilter = Deer()
 kangaroofilter = Kangaroo()
 tigerfilter = Tiger()
+rabbitfilter = Rabbit()
+pandafilter = Panda()
 
 def processimage(imagedata: bytes, animal: str) -> str:
     """
@@ -45,7 +49,45 @@ def processimage(imagedata: bytes, animal: str) -> str:
         case "human":
             mmat = img
         case "cat":
-            mmat = catfilter.visualize(img)
+            mmat = catfilter.visualize(img)[1]
+        case "cow":
+            mmat = cowfilter.visualize(img)[1]
+        case "goat":
+            mmat = goatfilter.visualize(img)[1]
+        case "pig":
+            mmat = pigfilter.visualize(img)[1]
+        case "sheep":
+            mmat = sheepfilter.visualize(img)[1]
+        case "dog":
+            mmat = dogfilter.visualize(img)[1]
+        case "rat":
+            mmat = ratfilter.visualize(img)[1]
+        case "horse":
+            mmat = horsefilter.visualize(img)[1]
+        case "rabbit":
+            mmat = rabbitfilter.visualize(img)[1]
+        case "panda":
+            mmat = pandafilter.visualize(img)[1]
+        case "squirrel":
+            mmat = squirrelfilter.visualize(img)[1]
+        case "elephant":
+            mmat = elephantfilter.visualize(img)[1]
+        case "lion":
+            mmat = lionfilter.visualize(img)[1]
+        case "wolf":
+            mmat = wolffilter.visualize(img)[1]
+        case "fox":
+            mmat = foxfiler.visualize(img)[1]
+        case "bear":
+            mmat = bearfilter.visualize(img)[1]
+        case "raccoon":
+            mmat = raccoonfilter.visualize(img)[1]
+        case "deer":
+            mmat = deerfilter.visualize(img)[1]
+        case "kangaroo":
+            mmat = kangaroofilter.visualize(img)[1]
+        case "tiger":
+            mmat = tigerfilter.visualize(img)[1]
         case _:
             print("no case implemented here")
     # convert mmat into blob, to make base64 URI
@@ -56,6 +98,98 @@ def processimage(imagedata: bytes, animal: str) -> str:
     base64_encoded = base64.b64encode(imgdata).decode('utf-8')
     data_uri = f"data:image/jpeg;base64,{base64_encoded}"
     return data_uri
+
+def processsplitimage(imagedata : bytes, animal : str) -> str:
+    """
+    Takes the data URL of a image, and returns the split of a single animal
+    """
+    header, encoded = imagedata.split(',', 1)
+    contents = base64.b64decode(encoded)
+    # save image to file, and then convert that file into matrix
+    f = open("temp.jpg", 'wb')
+    f.write(contents)
+    f.close()
+    img = cv2.imread('temp.jpg')
+    #img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    # apply filters
+    mmat = None 
+    match animal:
+        case "human":
+            mmat = img
+        case "cat":
+            orig, modified = catfilter.visualize(img)
+            mmat = renderer.make_split_frame(orig, modified)
+        case "cow":
+            orig, modified = cowfilter.visualize(img)
+            mmat = renderer.make_split_frame(orig, modified)
+        case "goat":
+            orig, modified = goatfilter.visualize(img)
+            mmat = renderer.make_split_frame(orig, modified)
+        case "pig":
+            orig, modified = pigfilter.visualize(img)
+            mmat = renderer.make_split_frame(orig, modified)
+        case "sheep":
+            orig, modified = sheepfilter.visualize(img)
+            mmat = renderer.make_split_frame(orig, modified)
+        case "dog":
+            orig, modified = dogfilter.visualize(img)
+            mmat = renderer.make_split_frame(orig, modified)
+        case "rat":
+            orig, modified = ratfilter.visualize(img)
+            mmat = renderer.make_split_frame(orig, modified)
+        case "horse":
+            orig, modified = horsefilter.visualize(img)
+            mmat = renderer.make_split_frame(orig, modified)
+        case "rabbit":
+            orig, modified = rabbitfilter.visualize(img)
+            mmat = renderer.make_split_frame(orig, modified)
+        case "panda":
+            orig, modified = pandafilter.visualize(img)
+            mmat = renderer.make_split_frame(orig, modified)
+        case "squirrel":
+            orig, modified = squirrelfilter.visualize(img)
+            mmat = renderer.make_split_frame(orig, modified)
+        case "elephant":
+            orig, modified = elephantfilter.visualize(img)
+            mmat = renderer.make_split_frame(orig, modified)
+        case "lion":
+            orig, modified = lionfilter.visualize(img)
+            mmat = renderer.make_split_frame(orig, modified)
+        case "wolf":
+            orig, modified = wolffilter.visualize(img)
+            mmat = renderer.make_split_frame(orig, modified)
+        case "fox":
+            orig, modified = foxfiler.visualize(img)
+            mmat = renderer.make_split_frame(orig, modified)
+        case "bear":
+            orig, modified = bearfilter.visualize(img)
+            mmat = renderer.make_split_frame(orig, modified)
+        case "raccoon":
+            orig, modified = raccoonfilter.visualize(img)
+            mmat = renderer.make_split_frame(orig, modified)
+        case "deer":
+            orig, modified = deerfilter.visualize(img)
+            mmat = renderer.make_split_frame(orig, modified)
+        case "kangaroo":
+            orig, modified = kangaroofilter.visualize(img)
+            mmat = renderer.make_split_frame(orig, modified)
+        case "tiger":
+            orig, modified = tigerfilter.visualize(img)
+            mmat = renderer.make_split_frame(orig, modified)
+        case "honeybee":
+            orig, modified = honeybeefilter.visualize(img)
+            mmat = renderer.make_split_frame(orig, modified)
+        case _:
+            print("no case implemented here")
+    # convert mmat into blob, to make base64 URI
+    cv2.imwrite(f"tempexport.jpg", mmat)
+    f = open("tempexport.jpg", 'rb')
+    imgdata = f.read()
+    f.close()
+    base64_encoded = base64.b64encode(imgdata).decode('utf-8')
+    data_uri = f"data:image/jpeg;base64,{base64_encoded}"
+    return data_uri
+    
 
 def choose_file(input_dir: str, extensions: Tuple[str, ...]) -> str:
     """

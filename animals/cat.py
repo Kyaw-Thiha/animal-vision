@@ -1,85 +1,69 @@
-from typing import Optional, Tuple
+from typing import Optional
 import numpy as np
-from animals.animal_utils import *
-from animals.animal_utils2 import *
+import cv2 as cv
 
 from animals.animal import Animal
+from animals.animal_utils import *
+from animals.cat_widevision_utils import *
 
 
 class Cat(Animal):
-    def visualize(self, image: np.ndarray) -> Optional[Tuple[np.ndarray, np.ndarray]]:
-        """
-        Simulate a simple dog-vision rendering from an RGB image.
+    """
+    Returns two images:
+      (1) human_zoomed : center-zoomed human-like view (narrower FOV)
+      (2) cat_wide     : wide-angle cat view (from ORIGINAL image)
+    """
+    # geometry params
+    CAMERA_HFOV_DEG = 100.0
+    CAT_PER_EYE_HALF_FOV_DEG = 105.0
+    CAT_OVERLAP_DEG = 40.0
+    CAT_TO_HUMAN_RATIO = 1.30
+    ENABLE_FOV_WARP = True
 
-        Steps:
-        1) Validate input is an RGB image.
-        2) Normalize the image
-        3) Convert sRGB -> linear RGB.
-        4) Map linear RGB to LMS, collapse L & M to a single “LM” channel (dichromacy proxy),
-           keep S as-is, then map back LMS -> linear RGB.
-        5) Convert linear RGB -> sRGB and return in original dtype.
+    def visualize(self, image: np.ndarray) -> Optional[tuple[np.ndarray, np.ndarray]]:
+        assert isinstance(image, np.ndarray) and image.ndim == 3 and image.shape[2] == 3, "HxWx3 RGB"
 
-        - alpha = 0.4 for collapsing LMS matrix
-        - gamma = 1.0 for acuity blur
-
-        """
-
-        # ---------- 1) validate input ----------
-        assert check_input_image(image)
         orig_dtype = image.dtype
-        # H, W, _ = image.shape
+        H, W = image.shape[:2]
 
-        # ---------- 2) normalize input ----------
-        normalized_image = get_normalized_image(image)
+        # ---------- A) Human branch: center zoom ----------
+        scale = zoom_scale_from_cat_ratio(
+            camera_hfov_deg=self.CAMERA_HFOV_DEG,
+            cat_per_eye_half_fov_deg=self.CAT_PER_EYE_HALF_FOV_DEG,
+            cat_to_human_ratio=self.CAT_TO_HUMAN_RATIO,
+        )
+        human_zoomed = center_zoom(image, scale=scale)
 
-        # ---------- 3) sRGB -> linear ----------
-        linear_normalized_image = srgb_to_linear(normalized_image)
-        # height, width, _ = linear_normalized_image.shape
-        vector_image_srgb = linear_normalized_image.reshape(-1, 3)
-
-        # ---------- 4) deal with night vision ----------
-
-        if not check_is_day(linear_normalized_image, linear_rgb=True):
-            print("is night")
-            # apply_rod_vision returns a new image — assign it back
-            linear_normalized_image = apply_rod_vision(
-                linear_normalized_image,
-                chroma_scale=0.07,
-                luminance_boost=1.8,
-                gamma=0.7,
+        # ---------- B) Cat branch: start from ORIGINAL ----------
+        cat_srgb01 = get_normalized_image(image)  # use original, not zoomed
+        if self.ENABLE_FOV_WARP:
+            cat_srgb01 = animal_fov_binocular_warp(
+                cat_srgb01.astype(np.float32),
+                fov_in_deg=self.CAMERA_HFOV_DEG,
+                per_eye_half_fov_deg=self.CAT_PER_EYE_HALF_FOV_DEG,
+                overlap_deg=self.CAT_OVERLAP_DEG,
+                out_size=(W, H),
+                border_mode=0,
+                border_value=0.0,
             )
 
-        # ---------- 5) linear RGB -> LMS, collapse L/M (dichromacy proxy), LMS -> linear RGB ----------
-        cat_matrix = collapse_LMS_matrix(0.45, 0.80)
-        result_in_rgb = vector_image_srgb @ cat_matrix.T
-        result_in_rgb = result_in_rgb.reshape(linear_normalized_image.shape)
+        # color pipeline (L/M merge)
+        lin = srgb_to_linear(cat_srgb01)
+        vec = lin.reshape(-1, 3)
+        lms = sRGB_to_LMS(vec)
+        alpha = 0.5  # how strongly to merge L and M
+        LM = alpha * lms[:, 0] + (1.0 - alpha) * lms[:, 1]
+        lms_merged = np.stack([LM, LM, lms[:, 2]], axis=1)
+        lin_rgb = LMS_to_RGB(lms_merged).reshape(H, W, 3)
+        lin_rgb = apply_acuity_blur(lin_rgb, sigma=1.0)
+        cat_srgb = np.clip(linear_to_srgb(np.clip(lin_rgb, 0.0, 1.0)), 0.0, 1.0)
 
-        # ---------- 6) apply blur ----------
-        result_in_rgb = apply_acuity_blur(result_in_rgb, 1.0)
-
-        # ---------- 7) deal with FOV ----------
-        H, W = result_in_rgb.shape[:2]
-        enlarged = enlarge_then_crop(
-            result_in_rgb,
-            scale=1.6,
-            out_size=(W, H),
-            crop_anchor="center",
-            pad_value=0.0,
-        )
-        result_in_rgb = animal_fov_binocular_warp(
-            enlarged,
-            fov_in_deg=60.0,
-            per_eye_half_fov_deg=100.0,
-            overlap_deg=80.0,
-            out_size=(W, H),
-        )
-
-        # ---------- 8) linear -> sRGB and restore dtype ----------
-        result_in_srgb = np.clip(linear_to_srgb(np.clip(result_in_rgb, 0.0, 1.0)), 0.0, 1.0)
-
+        # ---------- Restore dtype ----------
         if np.issubdtype(orig_dtype, np.integer):
-            out = (result_in_srgb * 255.0 + 0.5).astype(orig_dtype)
+            human_out = human_zoomed if np.issubdtype(human_zoomed.dtype, np.integer) else (np.clip(human_zoomed,0,1)*255.0+0.5).astype(orig_dtype)
+            cat_out   = (cat_srgb * 255.0 + 0.5).astype(orig_dtype)
         else:
-            out = result_in_srgb.astype(orig_dtype)
+            human_out = human_zoomed.astype(orig_dtype)
+            cat_out   = cat_srgb.astype(orig_dtype)
 
-        return image, out
+        return human_out, cat_out

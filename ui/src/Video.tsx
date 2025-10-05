@@ -137,13 +137,13 @@ function Video() {
     useEffect(() => {
       const interval = setInterval(() => {
         askGemini(animal)
-      }, 5000);
+      }, 10000);
     
       return () => clearInterval(interval); // This represents the unmount function, in which you need to clear your interval to prevent memory leaks.
     }, [animal])
 
     async function askGemini(currentAnimal: string){
-        fetch(`http://localhost:8000/gettip?animal=${encodeURIComponent(currentAnimal)}`, {
+        fetch(`https://animal.yoshixi.net/gettip?animal=${encodeURIComponent(currentAnimal)}`, {
             method: "POST"
           })
           .then(response => response.text())

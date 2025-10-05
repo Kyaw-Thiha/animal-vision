@@ -3,10 +3,11 @@ import numpy as np
 
 from ml.MST_plus_plus.predict_code.predict import predict_rgb_to_hsi
 from ml.MST_plus_plus.predict_code.predict_torch import predict_rgb_to_hsi_torch
+from ml.classic_rgb_to_hsi.classic_rgb_to_hsi import classic_rgb_to_hsi
 from animals.animal import Animal
 
 try:
-    import cv2 as cv  # used for optional Gaussian blur; falls back if unavailable
+    import cv2 as cv  # used for resizing/blur; falls back if unavailable
 except Exception:
     cv = None
 
@@ -43,14 +44,8 @@ class HoneyBee(Animal):
       - custom_matrix: optional 3×3 for mapping [U,B,G]→sRGB (linear)
       - blur_sigma_px: optional Gaussian σ (in pixels) for acuity blur
       - assume_hsi_is_reflectance: True if model outputs reflectance, False if it already outputs radiance
-
-    Different ways of “mapping HSI back to visualization RGB”:
-      - Physically-faithful colorimetry from bee space to human sRGB is undefined (different cones!).
-        So we offer *visualization* mappings:
-          (a) FALSECOLOR (default): a stable, interpretative palette highlighting UV distinctly.
-          (b) CUSTOM MATRIX: if you calibrate on a chart and like a specific linear blend, use a 3×3.
-          (c) OPPONENT: show bee-chromatic differences as hue, and total catch as value.
-
+      - hsi_downsample: if True, run classic_rgb_to_hsi at reduced resolution for speed
+      - hsi_scale: scale factor (e.g., 0.5 halves H and W) when hsi_downsample is True
     """
 
     def __init__(
@@ -59,10 +54,15 @@ class HoneyBee(Animal):
         hsi_band_centers_nm: Optional[np.ndarray] = None,
         illuminant: Optional[Callable[[np.ndarray], np.ndarray]] = None,
         adaptation: Optional[Literal["white_patch", "gray_world"]] = "white_patch",
-        mapping_mode: Literal["falsecolor", "custom_matrix", "opponent"] = "opponent",
+        mapping_mode: Literal[
+            "falsecolor", "custom_matrix", "opponent", "uv_purple_yellow", "falsecolor_uv_mixed"
+        ] = "uv_purple_yellow",
         custom_matrix: Optional[np.ndarray] = None,
         blur_sigma_px: Optional[float] = 0.2,
         assume_hsi_is_reflectance: bool = True,
+        *,
+        hsi_downsample: bool = False,
+        hsi_scale: float = 0.1,
     ):
         self.onnx_path = onnx_path
         self.adaptation = adaptation
@@ -70,6 +70,10 @@ class HoneyBee(Animal):
         self.custom_matrix = custom_matrix
         self.blur_sigma_px = blur_sigma_px or 0.0
         self.assume_hsi_is_reflectance = assume_hsi_is_reflectance
+
+        # Fast-path controls for classic_rgb_to_hsi
+        self.hsi_downsample = bool(hsi_downsample)
+        self.hsi_scale = float(hsi_scale)
 
         # Default band centers: 31 bands from 400..700 nm inclusive
         if hsi_band_centers_nm is None:
@@ -81,7 +85,6 @@ class HoneyBee(Animal):
         self.E = illuminant if illuminant is not None else self._D65_like
 
         # Precompute bee cone curves sampled to band centers (simple log-normal shapes)
-        # You can swap these with published curves if you have them sampled to your bands.
         self.UV_curve, self.Blue_curve, self.Green_curve = self._honeybee_cone_curves(self.lambdas)
 
         # Normalize cone curves so their integrals are comparable (helps stability)
@@ -90,7 +93,7 @@ class HoneyBee(Animal):
             if s > 0:
                 v /= s
 
-        # For opponent mapping, predefine small epsilon to avoid divide-by-zero
+        # For opponent mapping, small epsilon to avoid divide-by-zero
         self._eps = 1e-8
 
     # ------------------- Public API -------------------
@@ -98,15 +101,23 @@ class HoneyBee(Animal):
     def visualize(self, image: np.ndarray) -> Optional[Tuple[np.ndarray, np.ndarray]]:
         """Run the honeybee vision pipeline on an HxWx3 RGB image."""
         # 0) Validate & normalize
-        assert isinstance(input, np.ndarray), "Input must be a numpy ndarray."
-        assert input.ndim == 3 and input.shape[2] == 3, "Input must be HxWx3 RGB."
+        assert isinstance(image, np.ndarray), "Input must be a numpy ndarray."
+        assert image.ndim == 3 and image.shape[2] == 3, "Input must be HxWx3 RGB."
 
-        orig_dtype = input.dtype
-        img = self._to_float01(input)
+        orig_dtype = image.dtype
+        img = self._to_float01(image)
 
-        # 1) RGB → HSI via your ML model
+        # 1) RGB → HSI via your ML model or classic converter
         # hsi = predict_rgb_to_hsi(img, self.onnx_path)  # shape (H,W,C_hsi), float32
-        hsi = predict_rgb_to_hsi_torch(img, "mst_plus_plus", "./ml/MST_plus_plus/model_zoo/mst_plus_plus.pth")
+        # hsi = predict_rgb_to_hsi_torch(img, "mst_plus_plus", "./ml/MST_plus_plus/model_zoo/mst_plus_plus.pth", overlap=512)
+        if self.hsi_downsample and cv is not None and 0.05 <= self.hsi_scale < 1.0:
+            hsi = self._classic_rgb_to_hsi_scaled(
+                img, wavelengths=np.asarray(self.lambdas, dtype=np.float32), scale=self.hsi_scale
+            )
+        else:
+            # Fallback to full-res (either by choice or if OpenCV not available)
+            hsi = classic_rgb_to_hsi(img, wavelengths=np.asarray(self.lambdas, dtype=np.float32))
+
         assert hsi.ndim == 3 and hsi.shape[:2] == img.shape[:2], "HSI must match H and W."
         bands = hsi.shape[2]
         assert bands == len(self.lambdas), f"HSI bands ({bands}) != length of provided band centers ({len(self.lambdas)})."
@@ -114,7 +125,6 @@ class HoneyBee(Animal):
         # 2) Radiance(λ): multiply by illuminant if your HSI is reflectance
         if self.assume_hsi_is_reflectance:
             E = self.E(self.lambdas).astype(hsi.dtype)  # shape (C_hsi,)
-            # Broadcast multiply: (H,W,C) * (C,) -> (H,W,C)
             radiance = hsi * E[None, None, :]
         else:
             radiance = hsi  # already radiance from the model
@@ -129,9 +139,8 @@ class HoneyBee(Animal):
             U, B, G = self._von_kries_white_patch(U, B, G)
         elif self.adaptation == "gray_world":
             U, B, G = self._von_kries_gray_world(U, B, G)
-        # else: no adaptation
 
-        # 5) Optional spatial acuity blur (bees have lower acuity; pick sigma ~1–2 px for 1080p-ish)
+        # 5) Optional spatial acuity blur
         if (self.blur_sigma_px or 0) > 0:
             U = self._gaussian_blur(U, self.blur_sigma_px)
             B = self._gaussian_blur(B, self.blur_sigma_px)
@@ -139,7 +148,7 @@ class HoneyBee(Animal):
 
         # 6) Map (U,B,G) → sRGB (linear), then encode and restore dtype
         if self.mapping_mode == "falsecolor":
-            rgb_lin = self._map_falsecolor(U, B, G)  # returns linear sRGB in [0, ~1]
+            rgb_lin = self._map_falsecolor(U, B, G)
         elif self.mapping_mode == "custom_matrix":
             assert self.custom_matrix is not None and self.custom_matrix.shape == (3, 3), (
                 "Provide custom_matrix as 3x3 for 'custom_matrix' mode."
@@ -147,19 +156,68 @@ class HoneyBee(Animal):
             rgb_lin = self._map_linear_matrix(U, B, G, self.custom_matrix)
         elif self.mapping_mode == "opponent":
             rgb_lin = self._map_opponent(U, B, G)
+        elif self.mapping_mode == "uv_purple_yellow":
+            rgb_lin = self._map_uv_purple_yellow_soft(U)
+            assert rgb_lin.ndim == 3 and rgb_lin.shape[2] == 3, f"uv_purple_yellow returned {rgb_lin.shape}"
+        elif self.mapping_mode == "falsecolor_uv_mixed":
+            self.uv_mix_alpha = 0.45  # [0.25 - 0.45]
+            rgb_lin = self._map_falsecolor_uv_mixed(U, B, G, alpha=self.uv_mix_alpha)
         else:
             raise ValueError(f"Unknown mapping_mode: {self.mapping_mode}")
 
-        # Tone + gamut: clip to [0,1] (you can swap with a gentle Reinhard if you prefer)
         rgb_lin = np.clip(rgb_lin, 0.0, 1.0)
 
-        # Encode to sRGB and cast back to original dtype
         out_srgb = self._linear_to_srgb(rgb_lin)
         if np.issubdtype(orig_dtype, np.integer):
             out = (out_srgb * 255.0 + 0.5).astype(orig_dtype)
         else:
             out = out_srgb.astype(orig_dtype)
         return image, out
+
+    # ------------------- Fast-path helpers -------------------
+
+    def _resize_preserve_range(self, x: np.ndarray, out_hw: Tuple[int, int], *, interp: int) -> np.ndarray:
+        """
+        Resize HxWxC (or HxW) array to (H_out, W_out, C) using OpenCV, keeping dtype/range.
+        Works in float32 internally for numeric stability; restores dtype if input was integer.
+        """
+        assert cv is not None, "OpenCV is required for resizing."
+        H_out, W_out = out_hw
+        was_float = np.issubdtype(x.dtype, np.floating)
+        xf = x.astype(np.float32, copy=False)
+        if x.ndim == 2:
+            y = cv.resize(xf, (W_out, H_out), interpolation=interp)
+        else:
+            y = cv.resize(xf, (W_out, H_out), interpolation=interp)
+        return y.astype(x.dtype, copy=False) if not was_float else y
+
+    def _classic_rgb_to_hsi_scaled(
+        self,
+        rgb01: np.ndarray,
+        *,
+        wavelengths: np.ndarray,
+        scale: float = 0.5,
+    ) -> np.ndarray:
+        """
+        Downsample → classic_rgb_to_hsi → upsample back to original size.
+        - Down: INTER_AREA for anti-aliased shrink
+        - Up:   INTER_LINEAR for smooth per-band interpolation
+        """
+        assert cv is not None, "OpenCV is required for hsi_downsample fast path."
+        H, W = rgb01.shape[:2]
+        h_small = max(1, int(round(H * scale)))
+        w_small = max(1, int(round(W * scale)))
+
+        # 1) Downsample RGB (sRGB-encoded, float in [0,1])
+        rgb_small = self._resize_preserve_range(rgb01, (h_small, w_small), interp=cv.INTER_AREA)
+
+        # 2) Classic converter at reduced resolution
+        hsi_small = classic_rgb_to_hsi(rgb_small, wavelengths=wavelengths.astype(np.float32))
+        assert hsi_small.ndim == 3 and h_small == hsi_small.shape[0] and w_small == hsi_small.shape[1]
+
+        # 3) Upsample HSI back to original (band-wise)
+        hsi_full = self._resize_preserve_range(hsi_small, (H, W), interp=cv.INTER_LINEAR)
+        return hsi_full
 
     # ------------------- Spectral Models -------------------
 
@@ -169,7 +227,6 @@ class HoneyBee(Animal):
         This is a smooth curve peaking in the blue-green; normalized to mean=1 for stability.
         Swap with a measured E(λ) if you have one.
         """
-        # Two broad Gaussians blended; not colorimetric, just a reasonable daylight shape
         x = (lambdas_nm - 560.0) / 50.0
         base = np.exp(-0.5 * x**2) + 0.3 * np.exp(-0.5 * ((lambdas_nm - 450.0) / 35.0) ** 2)
         base /= base.mean()
@@ -183,7 +240,6 @@ class HoneyBee(Animal):
         """
 
         def log_normal(λ, peak, sigma):
-            # sigma in nm (controls width)
             return np.exp(-0.5 * ((λ - peak) / sigma) ** 2)
 
         UV = log_normal(lambdas_nm, 350.0, 25.0)
@@ -194,20 +250,14 @@ class HoneyBee(Animal):
     # ------------------- Adaptation -------------------
 
     def _von_kries_white_patch(self, U: np.ndarray, B: np.ndarray, G: np.ndarray):
-        """
-        von Kries-type adaptation using the brightest pixel per channel.
-        Stabilizes scenes with strong color casts.
-        """
+        """von Kries-type adaptation using the brightest pixel per channel."""
         Uw = max(U.max(), self._eps)
         Bw = max(B.max(), self._eps)
         Gw = max(G.max(), self._eps)
         return U / Uw, B / Bw, G / Gw
 
     def _von_kries_gray_world(self, U: np.ndarray, B: np.ndarray, G: np.ndarray):
-        """
-        von Kries-type adaptation using channel means (gray-world).
-        Good when no clear white patch exists.
-        """
+        """von Kries-type adaptation using channel means (gray-world)."""
         Um = max(U.mean(), self._eps)
         Bm = max(B.mean(), self._eps)
         Gm = max(G.mean(), self._eps)
@@ -217,13 +267,9 @@ class HoneyBee(Animal):
 
     def _map_falsecolor(self, U: np.ndarray, B: np.ndarray, G: np.ndarray) -> np.ndarray:
         """
-        FALSECOLOR (default):
-          - Make UV visually salient as magenta/pink (so viewers instantly see 'bee-only' cues).
-          - Keep Blue as blue/cyan and Green as green/yellow.
-        Implementation: a fixed, interpretable linear blend in linear sRGB.
+        FALSECOLOR mapping: UV salient as magenta/pink; Blue as blue/cyan; Green as green/yellow.
         """
 
-        # Normalize per-channel to 95th percentile to reduce outlier clipping
         def norm95(x):
             s = np.percentile(x, 95.0)
             return x / max(s, self._eps)
@@ -232,34 +278,19 @@ class HoneyBee(Animal):
         B_n = norm95(B)
         G_n = norm95(G)
 
-        # Heuristic linear blend (feel free to tweak these weights):
         R = 0.85 * U_n + 0.10 * G_n
         Gc = 0.80 * G_n + 0.20 * B_n
         Bl = 0.70 * B_n + 0.40 * U_n
-
-        rgb_lin = np.stack([R, Gc, Bl], axis=2)
-        return rgb_lin
+        return np.stack([R, Gc, Bl], axis=2)
 
     def _map_linear_matrix(self, U: np.ndarray, B: np.ndarray, G: np.ndarray, M: np.ndarray) -> np.ndarray:
-        """
-        CUSTOM 3×3 MATRIX mapping:
-          sRGB_linear = M · [U, B, G]^T
-        Provide M when you have a preferred palette or a calibration-derived mapping.
-        """
+        """CUSTOM 3×3 MATRIX mapping: sRGB_linear = M · [U, B, G]^T"""
         H, W = U.shape
-        C = np.stack([U, B, G], axis=2).reshape(-1, 3)  # (N,3)
-        out = (C @ M.T).reshape(H, W, 3)
-        return out
+        C = np.stack([U, B, G], axis=2).reshape(-1, 3)
+        return (C @ M.T).reshape(H, W, 3)
 
     def _map_opponent(self, U: np.ndarray, B: np.ndarray, G: np.ndarray) -> np.ndarray:
-        """
-        OPPONENT visualization:
-          - Use two opponent axes plus total energy to pick HSV-like color:
-                O1 = G - B         (green vs blue)
-                O2 = B - U         (blue vs UV)
-                L  = (U + B + G)   (overall intensity)
-          - Map angle = atan2(O2, O1) to hue, radius to saturation, L to value (then convert to sRGB).
-        """
+        """OPPONENT visualization (HSV-like angle/radius mapping)."""
         O1 = G - B
         O2 = B - U
         L = (U + B + G) / 3.0
@@ -271,8 +302,97 @@ class HoneyBee(Animal):
         val = L / (np.percentile(L, 95.0) + self._eps)
 
         hsv = np.stack([hue, np.clip(sat, 0, 1), np.clip(val, 0, 1)], axis=2)
-        rgb = self._hsv_to_rgb(hsv)  # returns linear-like RGB in [0,1]
-        return rgb
+        return self._hsv_to_rgb(hsv)
+
+    def _map_uv_purple_yellow(self, U: np.ndarray) -> np.ndarray:
+        U = np.asarray(U)
+        if U.ndim == 3 and U.shape[2] == 1:
+            U = U[..., 0]
+        elif U.ndim != 2:
+            raise ValueError(f"U must be HxW or HxWx1, got shape {U.shape}")
+
+        denom = float(np.percentile(U, 99.0))
+        denom = max(denom, float(self._eps))
+        u = (U.astype(np.float32) / denom).clip(0.0, 1.0)
+        u = u**0.85
+
+        c_purple_srgb = np.array([128, 0, 150], np.float32) / 255.0
+        c_yellow_srgb = np.array([255, 225, 60], np.float32) / 255.0
+
+        def srgb_to_linear(v: np.ndarray) -> np.ndarray:
+            a = 0.055
+            return np.where(v <= 0.04045, v / 12.92, ((v + a) / (1 + a)) ** 2.4).astype(np.float32)
+
+        c0 = srgb_to_linear(c_purple_srgb)
+        c1 = srgb_to_linear(c_yellow_srgb)
+
+        u3 = u[..., None]
+        rgb_lin = (1.0 - u3) * c0[None, None, :] + u3 * c1[None, None, :]
+        return np.ascontiguousarray(np.clip(rgb_lin, 0.0, 1.0), dtype=np.float32)
+
+    def _map_uv_purple_yellow_soft(
+        self,
+        U: np.ndarray,
+        *,
+        u_gamma: float = 0.90,
+        accent_gamma: float = 0.85,
+        accent_strength: float = 0.05,
+    ) -> np.ndarray:
+        """Warm, pastel UV-only visualization; returns linear sRGB (HxWx3)."""
+        U = np.asarray(U)
+        if U.ndim == 3 and U.shape[2] == 1:
+            U = U[..., 0]
+        elif U.ndim != 2:
+            raise ValueError(f"U must be HxW or HxWx1, got {U.shape}")
+
+        eps = float(self._eps)
+
+        denom = float(np.percentile(U, 98.0))
+        denom = max(denom, eps)
+        u = (U.astype(np.float32) / denom).clip(0.0, 1.0)
+        u = u ** float(u_gamma)
+
+        c_purple_srgb = np.array([176, 124, 232], np.float32) / 255.0
+        c_warm_srgb = np.array([255, 211, 138], np.float32) / 255.0
+
+        def srgb_to_linear(v: np.ndarray) -> np.ndarray:
+            a = 0.055
+            return np.where(v <= 0.04045, v / 12.92, ((v + a) / (1 + a)) ** 2.4).astype(np.float32)
+
+        c0 = srgb_to_linear(c_purple_srgb)
+        c1 = srgb_to_linear(c_warm_srgb)
+
+        u3 = u[..., None]
+        rgb_lin = (1.0 - u3) * c0 + u3 * c1
+
+        gray = np.array([0.5, 0.5, 0.5], np.float32)
+        purple_dir = c0 - gray
+        a = float(accent_strength)
+        if a > 0:
+            w = (u ** float(accent_gamma))[..., None]
+            rgb_lin = rgb_lin + a * w * purple_dir
+
+        Y = (0.2126 * rgb_lin[..., 0] + 0.7152 * rgb_lin[..., 1] + 0.0722 * rgb_lin[..., 2]) + eps
+        Y_target = np.clip(0.22 + 0.55 * u, 0.0, 1.0)
+        gain = (Y_target / Y)[..., None]
+        gain = np.clip(gain, 0.6, 1.6)
+        rgb_lin = rgb_lin * gain
+
+        rgb_lin = rgb_lin / (1.0 + 0.6 * rgb_lin)
+        return np.clip(np.ascontiguousarray(rgb_lin, dtype=np.float32), 0.0, 1.0)
+
+    def _map_falsecolor_uv_mixed(self, U: np.ndarray, B: np.ndarray, G: np.ndarray, alpha: float = 0.35) -> np.ndarray:
+        """Blend falsecolor with UV purple↔yellow tint in linear sRGB."""
+        base = self._map_falsecolor(U, B, G)
+        uv_tint = self._map_uv_purple_yellow_soft(U)
+        alpha = float(np.clip(alpha, 0.0, 1.0))
+        mixed = (1.0 - alpha) * base + alpha * uv_tint
+        p95 = np.percentile(mixed, 99.0)
+        if p95 > 1e-8:
+            p95 = np.float32(np.percentile(mixed, 99.0))
+            scale = np.maximum(np.float32(1.0), p95)
+            mixed = mixed / float(scale)
+        return np.clip(mixed.astype(np.float32), 0.0, 1.0)
 
     # ------------------- Utilities -------------------
 
@@ -282,10 +402,8 @@ class HoneyBee(Animal):
             y = x.astype(np.float32) / 255.0
         else:
             y = x.astype(np.float32)
-            # if someone passed >1, clamp
             if y.max() > 1.001:
                 y = np.clip(y / 255.0, 0, 1)
-        # keep in sRGB (encoded) for the ML model if that's how you trained it.
         return y
 
     def _linear_to_srgb(self, rgb_lin: np.ndarray) -> np.ndarray:
@@ -299,9 +417,7 @@ class HoneyBee(Animal):
         return out
 
     def _hsv_to_rgb(self, hsv: np.ndarray) -> np.ndarray:
-        """
-        Minimal HSV→RGB (values in [0,1]). Interpreted as linear RGB for our visualization.
-        """
+        """Minimal HSV→RGB (values in [0,1]). Interpreted as linear RGB for our visualization."""
         h, s, v = hsv[..., 0], hsv[..., 1], hsv[..., 2]
         i = np.floor(h * 6.0).astype(np.int32)
         f = h * 6.0 - i
@@ -320,7 +436,6 @@ class HoneyBee(Animal):
         if sigma <= 0:
             return img
         if cv is not None:
-            # Use odd kernel size based on sigma (~truncate at 3σ)
             k = int(2 * np.ceil(3 * sigma) + 1)
             return cv.GaussianBlur(img, (k, k), sigmaX=sigma, sigmaY=sigma, borderType=cv.BORDER_REFLECT101)
         # naive numpy fallback (box blur approx)

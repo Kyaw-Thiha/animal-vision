@@ -203,6 +203,60 @@ def apply_tapetum_bloom(image: np.ndarray, strength: float = 0.12, sigma: float 
     y = x + strength * mask * (screen - x)
     return np.clip(y, 0.0, 1.0).astype(image.dtype, copy=False)
 
+def apply_s_cone_vertical_gain(image_lin, s_top=1.0, s_bottom=0.6, *,
+                               power: float = 1.0,
+                               extra_boost: float = 0.0,
+                               band: tuple | None = None,
+                               clamp: bool = True):
+    """
+    Used for rat; S-like gain decreases from top->bottom rows.
+
+    Args
+    ----
+    s_top, s_bottom : float
+        Row gain at top (y=0) and bottom (y=1). Increase contrast by widening this range,
+        e.g. s_top=1.3, s_bottom=0.5.
+    power : float
+        Non-linear shaping of the vertical ramp; >1 pushes gain toward the top.
+    extra_boost : float
+        Linear amplification of deviation from 1.0: w <- 1 + extra_boost*(w-1)
+        (e.g., 0.5 makes the effect ~50% stronger).
+    band : (y_center, sigma, peak) or None
+        Optional Gaussian bump along rows: multiplies w by (1 + peak*exp(-(y-yc)^2/(2*sigma^2))).
+        Use y_center in [0,1], sigma in [0.05..0.3], peak ~0.2..0.6.
+    clamp : bool
+        Clip blue back to [0,1] (True) or leave as-is for later tone mapping (False).
+    """
+    import numpy as np
+
+    out = image_lin.astype(np.float32, copy=False)
+    H, W = out.shape[:2]
+
+    # base vertical ramp (top -> bottom)
+    w = np.linspace(s_top, s_bottom, H, dtype=np.float32)  # shape (H,)
+    if power != 1.0:
+        # remap into [0,1], apply power, map back to [s_bottom,s_top]
+        t = (w - s_bottom) / max(1e-8, (s_top - s_bottom))
+        t = np.clip(t, 0.0, 1.0) ** power
+        w = s_bottom + (s_top - s_bottom) * t
+
+    if extra_boost != 0.0:
+        w = 1.0 + extra_boost * (w - 1.0)
+
+    if band is not None:
+        y_center, sigma, peak = band
+        yy = np.linspace(0.0, 1.0, H, dtype=np.float32)
+        bump = 1.0 + peak * np.exp(-0.5 * ((yy - y_center) / max(1e-8, sigma))**2)
+        w = w * bump
+
+    # broadcast to (H,W) and apply to blue channel
+    w2d = w[:, None]  # (H,1) → broadcasts across width
+    if clamp:
+        out[..., 2] = np.clip(out[..., 2] * w2d, 0.0, 1.0)
+    else:
+        out[..., 2] = out[..., 2] * w2d
+
+    return out
 
 def apply_rod_vision(
     image: np.ndarray, 

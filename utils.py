@@ -7,8 +7,8 @@ from InquirerPy import inquirer
 
 from animals.animal import Animal
 from animals.honeybee import HoneyBee
-from animals import Cat, Dog, Sheep, Pig, Goat, Cow
 from renderers.video import VideoRenderer
+from animals import Cat, Dog, Sheep, Pig, Goat, Cow, Rat, Horse, Rabbit, Panda, Squirrel, Elephant, Lion, Wolf, Fox, Bear, Raccoon, Deer, Kangaroo, Tiger
 
 
 renderer = VideoRenderer()
@@ -18,6 +18,18 @@ sheepfilter = Sheep()
 pigfilter = Pig()
 goatfilter = Goat()
 cowfilter = Cow()
+ratfilter = Rat()
+horsefilter = Horse()
+squirrelfilter = Squirrel()
+elephantfilter = Elephant()
+lionfilter = Lion()
+wolffilter = Wolf()
+foxfiler = Fox()
+bearfilter = Bear()
+raccoonfilter = Raccoon()
+deerfilter = Deer()
+kangaroofilter = Kangaroo()
+tigerfilter = Tiger()
 
 def processimage(imagedata: bytes, animal: str) -> str:
     """
@@ -160,6 +172,20 @@ def choose_animal() -> Animal:
         {"name": "Pig", "value": Pig()},
         {"name": "Goat", "value": Goat()},
         {"name": "Cow", "value": Cow()},
+        {"name": "Rat", "value": Rat()},
+        {"name": "Horse", "value": Horse()},
+        {"name": "Rabbit", "value": Rabbit()},
+        {"name": "Panda", "value": Panda()},
+        {"name": "Squirrel", "value": Squirrel()},
+        {"name": "Elephant", "value": Elephant()},
+        {"name": "Lion", "value": Lion()},
+        {"name": "Wolf", "value": Wolf()},
+        {"name": "Fox", "value": Fox()},
+        {"name": "Bear", "value": Bear()},
+        {"name": "Raccoon", "value": Raccoon()},
+        {"name": "Deer", "value": Deer()},
+        {"name": "Kangaroo", "value": Kangaroo()},
+        {"name": "Tiger", "value": Tiger()},
     ]
     animal_choice = inquirer.select(  # type: ignore[reportPrivateImportUsage]
         message="Select which animal you want to visualize:",

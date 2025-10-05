@@ -30,6 +30,7 @@ from animals import (
     Deer,
     Kangaroo,
     Tiger,
+    RatUV,
 )
 
 
@@ -288,10 +289,11 @@ def choose_animal() -> Animal:
         {"name": "Deer", "value": Deer()},
         {"name": "Kangaroo", "value": Kangaroo()},
         {"name": "Tiger", "value": Tiger()},
+        {"name": "Rat", "value": Rat()},
         # UV based animals
         {"name": "HoneyBee", "value": HoneyBee()},
         {"name": "ReinDeer", "value": Reindeer()},
-        {"name": "Rat", "value": Rat()},
+        {"name": "RatUV", "value": RatUV()},
     ]
     animal_choice = inquirer.select(  # type: ignore[reportPrivateImportUsage]
         message="Select which animal you want to visualize:",

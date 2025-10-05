@@ -21,3 +21,4 @@ from .tiger import Tiger
 
 from .honeybee import HoneyBee
 from .reindeer import Reindeer
+from .rat_uv import RatUV

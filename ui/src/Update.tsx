@@ -6,31 +6,29 @@ function Update() {
     const socket = io('http://127.0.0.1:8000')
     const videoPlayerRef = useRef(null); 
     const canvasRef = useRef(null); 
+    const hiddencanvasRef = useRef(null); 
     const [openCamera, setOpenCamera] = useState(true); 
-    const [image, setImage] = useState(false); 
+    const [image, setImage] = useState(""); 
     const [animal, setAnimal] = useState("human"); 
     const [connection, setConnection] = useState(null);
    
     socket.on('connect', () => {
         console.log(`You connected to the server with id ${socket.id}`);
     })
-    
+
     socket.on('getimage', (imagedata) => {
-        console.log(`You get an image`, imagedata);
-        setImage(imagedata);
-        const ctx = canvas.getContext("2d");
-        const img = new Image();
-        img.src = image;
-        img.onload = function() {
-            ctx.drawImage(
-                img,
-                0,
-                0,
-                canvas.width,
-                canvas.height
-            );
+        console.log(imagedata)
+        if (imagedata['image'] != null){
+            const imager = imagedata['image'];
+            const canvas = canvasRef.current;
+            const canvasctx = canvas.getContext("2d");
+            const img = new Image();
+            img.onload = function() {
+                canvasctx.drawImage(img, 0, 0);
+            };
+            img.src = imager;
+            }   
         }
-        }   
     );
 
     useEffect( () => {
@@ -58,28 +56,26 @@ function Update() {
 
     useEffect(() => {
       const interval = setInterval(() => {
-        setCurrentImage()
+        captureImage()
       }, 100);
     
       return () => clearInterval(interval); // This represents the unmount function, in which you need to clear your interval to prevent memory leaks.
     }, [])
     
-    // update every 30 frames 
-    const setCurrentImage = async () => {
-        const image = captureImage();
-        socket.emit('sendimage', image, animal);
-        }
 
     const captureImage = () => {
-        const canvas = canvasRef.current;
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
+        const hiddencanvas = hiddencanvasRef.current;
         const video = videoPlayerRef.current;
         if (video){
-            const image = canvas.toDataURL("image/png") //.replace("image/png", "image/octet-stream");
-            // const imageDataUrl = canvas.toDataURL("image/png");
-            // setImage(imageDataUrl);
-            return image
+            const ctx = hiddencanvas.getContext("2d");
+            ctx.drawImage(video, 0, 0, hiddencanvas.width, hiddencanvas.height); 
+            const image = hiddencanvas.toDataURL("image/png") //.replace("image/png", "image/octet-stream");
+            socket.emit('sendimage', image, animal);
+
+
+            // canvas.toBlob((blob) => {
+            //     socket.emit('sendimage', blob, animal);
+            // }, "image/jpeg", 0.8); // JPEG at 80% quality for smaller size
         }
     }
 
@@ -95,6 +91,15 @@ function Update() {
             className="border-2 border-amber-500"
             id="canvas"
             ref={canvasRef}
+            height={window.innerHeight}
+            width={window.innerWidth}
+        ></canvas>
+        <canvas
+            className="border-2 border-amber-500 hidden"
+            id="hiddencanvas"
+            ref={hiddencanvasRef}
+            height={window.innerHeight}
+            width={window.innerWidth}
         ></canvas>
         <button
             className="bg-red-500 border-2 border-black absolute z-[1]"

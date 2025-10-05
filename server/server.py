@@ -23,7 +23,6 @@ async def disconnect(sid):
 async def sendimage(sid, image, animal):
     if sid not in conns:
         conns[sid] = deque(maxlen=100)
-    
     if image and animal:
         conns[sid].append((image, animal))
         print(f"Queued image from {sid}, queue size: {len(conns[sid])}")
@@ -32,17 +31,16 @@ async def sendimage(sid, image, animal):
 
 @sio.event
 async def connect(sid, environ):
-    print("hello")
     # Create background task when server starts accepting connections
     if not hasattr(sio, '_background_task_started'):
         sio.start_background_task(send_to_client)
         sio._background_task_started = True
 
 def processimage(imagedata: bytes, animal: str) -> bytes:
+    # convert
     return imagedata
 
 async def send_to_client():
-    breakpoint()
     while True:
         try:
             for sid in list(conns.keys()):
@@ -50,8 +48,7 @@ async def send_to_client():
                     image, animal = conns[sid].popleft()
                     processedimage = processimage(image, animal)
                     await sio.emit('getimage', {
-                        'image': processedimage,
-                        'animal': animal
+                        'image': processedimage
                     }, room=sid)
             await asyncio.sleep(0.001)
         except Exception as e:

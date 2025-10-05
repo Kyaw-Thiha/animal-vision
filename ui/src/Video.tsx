@@ -184,6 +184,118 @@ function Video() {
            >
                Sheep
            </button> 
+           <button 
+               className={`w-20 rounded-sm border-2 mx-5 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+                   animal === "rat" ? "bg-amber-300" : "bg-amber-500"
+               }`} 
+               onClick={ () => {setAnimal("rat")}}
+           >
+               Rat
+           </button> 
+           <button 
+               className={`w-20 rounded-sm border-2 mx-5 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+                   animal === "horse" ? "bg-amber-300" : "bg-amber-500"
+               }`} 
+               onClick={ () => {setAnimal("horse")}}
+           >
+               Horse
+           </button> 
+           <button 
+               className={`w-20 rounded-sm border-2 mx-5 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+                   animal === "squirrel" ? "bg-amber-300" : "bg-amber-500"
+               }`} 
+               onClick={ () => {setAnimal("squirrel")}}
+           >
+               Squirrel
+           </button> 
+           <button 
+               className={`w-20 rounded-sm border-2 mx-5 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+                   animal === "elephant" ? "bg-amber-300" : "bg-amber-500"
+               }`} 
+               onClick={ () => {setAnimal("elephant")}}
+           >
+               Elephant
+           </button> 
+           <button 
+               className={`w-20 rounded-sm border-2 mx-5 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+                   animal === "lion" ? "bg-amber-300" : "bg-amber-500"
+               }`} 
+               onClick={ () => {setAnimal("lion")}}
+           >
+               Lion
+           </button> 
+           <button 
+               className={`w-20 rounded-sm border-2 mx-5 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+                   animal === "wolf" ? "bg-amber-300" : "bg-amber-500"
+               }`} 
+               onClick={ () => {setAnimal("wolf")}}
+           >
+               Wolf
+           </button> 
+           <button 
+               className={`w-20 rounded-sm border-2 mx-5 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+                   animal === "fox" ? "bg-amber-300" : "bg-amber-500"
+               }`} 
+               onClick={ () => {setAnimal("fox")}}
+           >
+               Fox
+           </button> 
+           <button 
+               className={`w-20 rounded-sm border-2 mx-5 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+                   animal === "bear" ? "bg-amber-300" : "bg-amber-500"
+               }`} 
+               onClick={ () => {setAnimal("bear")}}
+           >
+               Bear
+           </button> 
+           <button 
+               className={`w-20 rounded-sm border-2 mx-5 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+                   animal === "raccoon" ? "bg-amber-300" : "bg-amber-500"
+               }`} 
+               onClick={ () => {setAnimal("raccoon")}}
+           >
+               Raccon
+           </button> 
+           <button 
+               className={`w-20 rounded-sm border-2 mx-5 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+                   animal === "deer" ? "bg-amber-300" : "bg-amber-500"
+               }`} 
+               onClick={ () => {setAnimal("deer")}}
+           >
+               Deer
+           </button> 
+           <button 
+               className={`w-20 rounded-sm border-2 mx-5 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+                   animal === "kangaroo" ? "bg-amber-300" : "bg-amber-500"
+               }`} 
+               onClick={ () => {setAnimal("kangaroo")}}
+           >
+               Kangaroo
+           </button> 
+           <button 
+               className={`w-20 rounded-sm border-2 mx-5 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+                   animal === "tiger" ? "bg-amber-300" : "bg-amber-500"
+               }`} 
+               onClick={ () => {setAnimal("tiger")}}
+           >
+               Tiger
+           </button> 
+           <button 
+               className={`w-20 rounded-sm border-2 mx-5 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+                   animal === "rabbit" ? "bg-amber-300" : "bg-amber-500"
+               }`} 
+               onClick={ () => {setAnimal("rabbit")}}
+           >
+               Rabbit
+           </button> 
+           <button 
+               className={`w-20 rounded-sm border-2 mx-5 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+                   animal === "panda" ? "bg-amber-300" : "bg-amber-500"
+               }`} 
+               onClick={ () => {setAnimal("panda")}}
+           >
+               Panda
+           </button> 
         </div>
         </>
     )

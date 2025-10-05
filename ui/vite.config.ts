@@ -27,7 +27,7 @@ export default defineConfig({
             "type": "image/png",
             "sizes": "192x192"
           }
-        ]
+        ],
         start_url: '/',
         background_color: '#ffffff',
         theme_color: '#000000',

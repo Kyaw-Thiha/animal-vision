@@ -28,10 +28,12 @@ def image(input_dir: str = IMAGES_INPUT, output_dir: str = IMAGES_OUTPUT):
 
     img = renderer.get_image()
     if img is not None:
-        out = animal.visualize(img)
-        if out is not None:
-            # renderer.render(out)
-            renderer.render_split_compare(img, out)
+        result = animal.visualize(img)
+        if result is not None:
+            img, out = result
+            if out is not None:
+                # renderer.render(out)
+                renderer.render_split_compare(img, out)
 
     renderer.close()
 
@@ -49,9 +51,12 @@ def video(input_dir: str = VIDEO_INPUT, output_dir: str = VIDEO_OUTPUT):
             break
         if animal == None:
             animal = choose_animal()  # per-frame processing
-        out = animal.visualize(frame)
-        if out is not None:
-            vr.render(out)
+        result = animal.visualize(frame)
+        if result is not None:
+            img, out = result
+            if out is not None:
+                # vr.render(out)
+                vr.render_split_compare(img, out)
     vr.close()
 
 
@@ -66,11 +71,14 @@ def webcam(output_dir: str = VIDEO_OUTPUT):
             frame = wr.get_image()
             if frame is None:
                 break
-            if animal == None:
+            if animal is None:
                 animal = choose_animal()  # per-frame processing
-            out = animal.visualize(frame)
-            if out is not None:
-                wr.render(out)
+            result = animal.visualize(frame)
+            if result is not None:
+                img, out = result
+                if out is not None:
+                    # wr.render(out)
+                    wr.render_split_compare(img, out)
     finally:
         wr.close()
 

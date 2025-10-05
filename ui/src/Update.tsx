@@ -69,13 +69,12 @@ function Update() {
         if (video){
             const ctx = hiddencanvas.getContext("2d");
             ctx.drawImage(video, 0, 0, hiddencanvas.width, hiddencanvas.height); 
-            const image = hiddencanvas.toDataURL("image/png") //.replace("image/png", "image/octet-stream");
-            socket.emit('sendimage', image, animal);
+            //const image = hiddencanvas.toDataURL("image/png") //.replace("image/png", "image/octet-stream");
+            //socket.emit('sendimage', image, animal);
 
-
-            // canvas.toBlob((blob) => {
-            //     socket.emit('sendimage', blob, animal);
-            // }, "image/jpeg", 0.8); // JPEG at 80% quality for smaller size
+            hiddencanvas.toBlob((blob) => {
+                socket.emit('sendimage', blob, animal);
+            }, "image/jpeg", 0.8); // JPEG at 80% quality for smaller size
         }
     }
 

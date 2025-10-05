@@ -1,11 +1,22 @@
 import os
 from typing import List, Tuple
-
+import cv2
 from InquirerPy import inquirer
 
 from animals.animal import Animal
 from animals import Cat, Dog
 
+def processimage(imagedata: bytes, animal: str) -> bytes:
+    """
+    Takes the raw bytes of a image, and the specific animal it wants
+    """
+    # save image to file, and then convert that file into matrix
+    f = open("temp.jpg", 'wb')
+    f.write(imagedata)
+    f.close()
+    img = cv2.imread('a.jpg',0)
+
+    return imagedata
 
 def choose_file(input_dir: str, extensions: Tuple[str, ...]) -> str:
     """

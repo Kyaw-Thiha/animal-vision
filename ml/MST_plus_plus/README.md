@@ -44,7 +44,7 @@ Then, unzip it in this directory (not root). It should unzipped into `model_zoo`
 ### compile.py
 Minimal Compilation
 ```bash
-python predict_code/compile.py --method mst_plus_plus --pretrained_model_path ./model_zoo/mst_plus_plus.pth
+python predict_code/compile.py --method mst_plus_plus --pretrained_model_path ./model_zoo/mst_plus_plus.pth --dynamic
 ```
 
 Detailed Compilation

@@ -13,6 +13,7 @@ from animals.goldfish import Goldfish
 from animals.guppy import Guppy
 from animals.heliconius import Heliconius
 from animals.honeybee import HoneyBee
+from animals.hummingbird import Hummingbird
 from animals.jumping_spider import JumpingSpider
 from animals.kestrel import Kestrel
 from animals.mantis_shrimp import MantisShrimp
@@ -321,6 +322,7 @@ def choose_animal() -> Animal:
         {"name": "Kestrel", "value": Kestrel()},
         {"name": "Jumping Spider", "value": JumpingSpider()},
         {"name": "DragonFly", "value": Dragonfly()},
+        {"name": "HummingBird", "value": Hummingbird()},
     ]
     animal_choice = inquirer.select(  # type: ignore[reportPrivateImportUsage]
         message="Select which animal you want to visualize:",

@@ -15,7 +15,7 @@ function Video() {
     const [socket, setSocket] = useState<Socket | null>(null);
 
     useEffect(() => {
-        const newSocket = io('http://127.0.0.1:8000');
+        const newSocket = io('https://animal.yoshixi.net/');
         setSocket(newSocket);
 
         newSocket.on('connect', () => {
@@ -295,6 +295,14 @@ function Video() {
                onClick={ () => {setAnimal("panda")}}
            >
                Panda
+           </button> 
+           <button 
+               className={`w-20 rounded-sm border-2 mx-5 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+                   animal === "honeybee" ? "bg-amber-300" : "bg-amber-500"
+               }`} 
+               onClick={ () => {setAnimal("honeybee")}}
+           >
+               Honeybee
            </button> 
         </div>
         </>

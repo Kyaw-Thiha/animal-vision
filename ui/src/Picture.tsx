@@ -56,7 +56,7 @@ function Picture() {
             const ctx = hiddencanvas.getContext("2d");
             ctx.drawImage(video, 0, 0, hiddencanvas.width, hiddencanvas.height); 
             const image = hiddencanvas.toDataURL("image/png") //.replace("image/png", "image/octet-stream");
-            fetch("http://127.0.0.1:8000/getpic", {
+            fetch("https://animal.yoshixi.net/getpic", {
                 method: "POST",
                 headers: {
                   "Content-Type": "application/json"

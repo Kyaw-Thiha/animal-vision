@@ -1,6 +1,5 @@
 from .cat import Cat
 from .dog import Dog
-from .honeybee import HoneyBee
 from .sheep import Sheep
 from .pig import Pig
 from .cow import Cow
@@ -19,3 +18,6 @@ from .raccoon import Raccoon
 from .deer import Deer
 from .kangaroo import Kangaroo
 from .tiger import Tiger
+
+from .honeybee import HoneyBee
+from .reindeer import Reindeer

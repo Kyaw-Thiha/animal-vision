@@ -6,6 +6,7 @@ import cv2
 from InquirerPy import inquirer
 
 from animals.animal import Animal
+from animals.goldfish import Goldfish
 from animals.honeybee import HoneyBee
 from animals.reindeer import Reindeer
 from renderers.video import VideoRenderer
@@ -294,6 +295,7 @@ def choose_animal() -> Animal:
         {"name": "HoneyBee", "value": HoneyBee()},
         {"name": "ReinDeer", "value": Reindeer()},
         {"name": "RatUV", "value": RatUV()},
+        {"name": "GoldFish", "value": Goldfish()},
     ]
     animal_choice = inquirer.select(  # type: ignore[reportPrivateImportUsage]
         message="Select which animal you want to visualize:",

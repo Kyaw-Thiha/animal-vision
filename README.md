@@ -1,6 +1,9 @@
 # Animal Vision
 A tool to help people visualize how animals see, using a combination of machine learning & mathematical models.
 
+Our motivation is that this allow us humans to truly appreciate the biodiversity of the nature, and feel the need to conserve this beautiful ecosystem of our planet Earth.
+
+
 # Visualization
 ## Non-UV Animals
 We rendered the eyes of these animals using mathematical transformation to map 
@@ -14,6 +17,8 @@ We then map these UV values into different receptors and render the reflectance 
 
 ![UV Animals](./images/gallery_UV.png)
 ![UV Unique Animals](./images/gallery_Unique_UV.png)
+
+# Feaures
 
 ## Data Preparation
 Here are the steps to prepare `input` and `output`.

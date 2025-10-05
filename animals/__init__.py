@@ -23,3 +23,4 @@ from .honeybee import HoneyBee
 from .reindeer import Reindeer
 from .rat_uv import RatUV
 from .goldfish import Goldfish
+from .damselfish import Damselfish

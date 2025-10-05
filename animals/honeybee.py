@@ -59,9 +59,9 @@ class HoneyBee(Animal):
         hsi_band_centers_nm: Optional[np.ndarray] = None,
         illuminant: Optional[Callable[[np.ndarray], np.ndarray]] = None,
         adaptation: Optional[Literal["white_patch", "gray_world"]] = "white_patch",
-        mapping_mode: Literal["falsecolor", "custom_matrix", "opponent"] = "falsecolor",
+        mapping_mode: Literal["falsecolor", "custom_matrix", "opponent"] = "opponent",
         custom_matrix: Optional[np.ndarray] = None,
-        blur_sigma_px: Optional[float] = 0.0,
+        blur_sigma_px: Optional[float] = 0.2,
         assume_hsi_is_reflectance: bool = True,
     ):
         self.onnx_path = onnx_path

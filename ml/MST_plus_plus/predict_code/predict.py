@@ -64,14 +64,6 @@ def _extract_tiles(img: np.ndarray, tile: int, overlap: int) -> Tuple[List[Tuple
             tiles.append((y, x, img_pad[y : y + tile, x : x + tile, :]))
     return tiles, img_pad, Hp, Wp
 
-
-def predict_rgb_to_hsi(
-    image: np.ndarray,
-    onnx_path: str,
-    tile: int = 256,
-    overlap: int = 64,
-    batch_size: int = 4,
-) -> np.ndarray:
     """
     Run a 256x256-only ONNX model over an arbitrary-size RGB image by tiling + blending.
 
@@ -87,8 +79,33 @@ def predict_rgb_to_hsi(
     -------
     HxWxC_hsi float32 HSI cube (same H, W as input; bands from the model).
     """
+
+
+def predict_rgb_to_hsi(
+    image: np.ndarray,
+    onnx_path: str,
+    tile: int = 256,
+    overlap: int = 64,
+    batch_size: int = 4,
+) -> np.ndarray:
+    """
+    Run a 256x256-only ONNX model over an arbitrary-size RGB image by tiling + blending.
+    Handles models with fixed batch dimension (e.g., N=4) by padding short batches.
+
+    Args
+    ----
+    image: HxWx3 (uint8 in [0,255] or float in [0,1]), sRGB-encoded.
+    onnx_path: path to the fixed-size ONNX model (expects NCHW 1x3x256x256 typically).
+    tile: tile size (must be what the model expects; 256 here).
+    overlap: pixels of overlap between tiles to suppress seams (e.g., 32~64).
+    batch_size: how many tiles to run per session.run call.
+
+    Returns
+    -------
+    HxWxC_hsi float32 HSI cube (same H, W as input; bands from the model).
+    """
     assert image.ndim == 3 and image.shape[2] == 3, "Input must be HxWx3."
-    # Normalize to float32 [0,1] for the model unless your preprocessing differs
+    # Normalize to float32 [0,1]
     if np.issubdtype(image.dtype, np.integer):
         img = image.astype(np.float32) / 255.0
     else:
@@ -96,10 +113,9 @@ def predict_rgb_to_hsi(
         if img.max() > 1.001:
             img = np.clip(img / 255.0, 0.0, 1.0)
 
-    # Prepare tiles
+    # Tiles
     tiles, img_pad, Hp, Wp = _extract_tiles(img, tile=tile, overlap=overlap)
     if len(tiles) == 0:
-        # Extremely small/empty input edge-case; fall back to simple center pad-and-run once.
         Hp = max(tile, img.shape[0])
         Wp = max(tile, img.shape[1])
         pad_y = Hp - img.shape[0]
@@ -107,17 +123,23 @@ def predict_rgb_to_hsi(
         img_pad = np.pad(img, ((0, pad_y), (0, pad_x), (0, 0)), mode="reflect")
         tiles = [(0, 0, img_pad[:tile, :tile, :])]
 
-    hann = _hann2d(tile, tile).astype(np.float32)[..., None]  # broadcast over channels
+    hann = _hann2d(tile, tile).astype(np.float32)[..., None]  # (tile,tile,1)
 
-    # Open session once
+    # Session + IO meta
     sess = ort.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
-    input_name = sess.get_inputs()[0].name
+    input_meta = sess.get_inputs()[0]
+    input_name = input_meta.name
     output_name = sess.get_outputs()[0].name
 
-    # Probe output layout/channels with a single run
+    # Detect static batch k (int) or None (dynamic)
+    dim0 = input_meta.shape[0]
+    static_batch_k: int | None = dim0 if isinstance(dim0, int) else None
+
+    # ----- Probe output layout/channels; must use N==k if k is static -----
     y0, x0, t0 = tiles[0]
-    tin = t0.transpose(2, 0, 1)[None, ...]  # 1x3xHxW
-    out0_any: Any = sess.run([output_name], {input_name: tin})[0]
+    one_tile = t0.transpose(2, 0, 1)[None, ...]  # 1x3xHxW (NCHW)
+    probe = np.repeat(one_tile, static_batch_k, axis=0) if static_batch_k and static_batch_k > 1 else one_tile
+    out0_any: Any = sess.run([output_name], {input_name: probe})[0]
     out0 = cast(np.ndarray, out0_any)
     if out0.ndim != 4:
         raise RuntimeError("Unexpected ONNX output rank; expected 4D (N,C,H,W or N,H,W,C).")
@@ -131,34 +153,54 @@ def predict_rgb_to_hsi(
     else:
         raise RuntimeError("Cannot infer output layout; dims do not match tile size.")
 
-    # Accumulators for stitched output
+    # Accumulators
     H, W = image.shape[:2]
     out_accum = np.zeros((Hp, Wp, C_hsi), dtype=np.float32)
     w_accum = np.zeros((Hp, Wp, C_hsi), dtype=np.float32)
 
-    # Batch over tiles
+    # If model has static batch k, align loop chunking to k
+    if static_batch_k and static_batch_k > 1:
+        batch_size = static_batch_k
+
     def run_batch(batch_tiles: List[Tuple[int, int, np.ndarray]]) -> None:
         if not batch_tiles:
             return
+
         batch = np.stack([t[2].transpose(2, 0, 1) for t in batch_tiles], axis=0)  # Nx3xHxW
-        preds_any: Any = sess.run([output_name], {input_name: batch})[0]
-        preds = cast(np.ndarray, preds_any)
-        if out_is_nchw:
-            preds = np.transpose(preds, (0, 2, 3, 1))  # NxHxWxC
-        # else: already NHWC
-        for (y, x, _), pred in zip(batch_tiles, preds):
+        Ncur = batch.shape[0]
+
+        if static_batch_k and static_batch_k > 1:
+            k = static_batch_k
+            if Ncur < k:
+                pad = np.repeat(batch[-1:], k - Ncur, axis=0)  # repeat last tile
+                feed = np.concatenate([batch, pad], axis=0)  # kx3xHxW
+            else:
+                feed = batch[:k]
+            preds_any: Any = sess.run([output_name], {input_name: feed})[0]
+            preds = cast(np.ndarray, preds_any)
+            if out_is_nchw:
+                preds = np.transpose(preds, (0, 2, 3, 1))  # kxHxWxC
+            preds_use = preds[: len(batch_tiles)]  # discard padded extras
+        else:
+            preds_any: Any = sess.run([output_name], {input_name: batch})[0]
+            preds = cast(np.ndarray, preds_any)
+            if out_is_nchw:
+                preds = np.transpose(preds, (0, 2, 3, 1))  # NxHxWxC
+            preds_use = preds
+
+        for (y, x, _), pred in zip(batch_tiles, preds_use):
             w = hann if C_hsi == 1 else np.repeat(hann, C_hsi, axis=2)
             out_accum[y : y + tile, x : x + tile, :] += pred * w
             w_accum[y : y + tile, x : x + tile, :] += w
 
     # Iterate in mini-batches
     cursor = 0
-    N = len(tiles)
-    while cursor < N:
+    Ntiles = len(tiles)
+    while cursor < Ntiles:
         run_batch(tiles[cursor : cursor + batch_size])
         cursor += batch_size
 
-    # Normalize by weights and crop away padding
+    # Normalize + crop
     stitched = out_accum / np.maximum(w_accum, 1e-8)
     top = overlap // 2
     left = overlap // 2

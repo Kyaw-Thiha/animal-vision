@@ -10,6 +10,7 @@ from animals.animal import Animal
 from animals.damselfish import Damselfish
 from animals.goldfish import Goldfish
 from animals.guppy import Guppy
+from animals.heliconius import Heliconius
 from animals.honeybee import HoneyBee
 from animals.morpho import Morpho
 from animals.reindeer import Reindeer
@@ -308,6 +309,7 @@ def choose_animal() -> Animal:
         {"name": "Northern Anchovy Fish", "value": Anchovy()},
         {"name": "Guppy Fish", "value": Guppy()},
         {"name": "Morpho Butterfly", "value": Morpho()},
+        {"name": "Heliconius Butterfly", "value": Heliconius()},
     ]
     animal_choice = inquirer.select(  # type: ignore[reportPrivateImportUsage]
         message="Select which animal you want to visualize:",

@@ -28,3 +28,4 @@ from .anableps import Anableps
 from .anchovy import Anchovy
 from .guppy import Guppy
 from .morpho import Morpho
+from .heliconius import Heliconius

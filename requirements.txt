@@ -26,6 +26,6 @@ hdf5storage
 tqdm
 
 onnx 
-onnxruntime 
+onnxruntime-gpu
 # onnxsim
 

@@ -1,196 +1,128 @@
-from typing import Tuple, List, Any, cast
+from typing import List, Tuple, Any, Union, Sequence, Optional, cast
 import numpy as np
 import onnxruntime as ort
 
 
-def _hann2d(h: int, w: int) -> np.ndarray:
-    wy = 0.5 - 0.5 * np.cos(2 * np.pi * np.linspace(0, 1, h, dtype=np.float32))
-    wx = 0.5 - 0.5 * np.cos(2 * np.pi * np.linspace(0, 1, w, dtype=np.float32))
-    return (wy[:, None] * wx[None, :]).astype(np.float32)
+def _to_float01(img: np.ndarray) -> np.ndarray:
+    if np.issubdtype(img.dtype, np.integer):
+        x = img.astype(np.float32) / 255.0
+    else:
+        x = img.astype(np.float32)
+        if x.max() > 1.001:
+            x = np.clip(x / 255.0, 0.0, 1.0)
+    return x
 
 
-def _reflect_pad_to_cover(H: int, W: int, tile: int, overlap: int) -> Tuple[int, int]:
-    assert 0 <= overlap < tile
-    stride = tile - overlap
+def _pad_to_multiple_reflect(x: np.ndarray, mult: int) -> Tuple[np.ndarray, Tuple[int, int, int, int]]:
+    H, W = x.shape[:2]
+    if mult is None or mult <= 0:
+        return x, (0, 0, 0, 0)
+    Hn = ((H + mult - 1) // mult) * mult
+    Wn = ((W + mult - 1) // mult) * mult
+    pad_y, pad_x = Hn - H, Wn - W
+    if pad_y == 0 and pad_x == 0:
+        return x, (0, 0, 0, 0)
+    top, bottom = pad_y // 2, pad_y - (pad_y // 2)
+    left, right = pad_x // 2, pad_x - (pad_x // 2)
+    x_pad = np.pad(x, ((top, bottom), (left, right), (0, 0)), mode="reflect")
+    return x_pad, (top, bottom, left, right)
 
-    def cover(L: int) -> int:
-        if L <= tile:
-            return tile
-        n = int(np.ceil((L - tile) / stride)) + 1
-        return stride * n + overlap
 
-    return cover(H), cover(W)
+def _crop_pads(x: np.ndarray, pads: Tuple[int, int, int, int]) -> np.ndarray:
+    top, bottom, left, right = pads
+    H, W = x.shape[:2]
+    return x[top : H - bottom if bottom else H, left : W - right if right else W, :]
 
 
-def _extract_tiles(
-    img: np.ndarray, tile: int, overlap: int
-) -> Tuple[List[Tuple[int, int, np.ndarray]], np.ndarray, int, int, Tuple[int, int, int, int]]:
-    """
-    Reflect-pad the image so a grid of tiles (tile×tile) fully covers it.
+def _infer_grid(n: int) -> Tuple[int, int]:
+    r = int(np.floor(np.sqrt(n)))
+    for rows in range(r, 0, -1):
+        if n % rows == 0:
+            return rows, n // rows
+    return 1, n
 
-    Returns
-    -------
-    tiles : list of (y, x, tile_view) coords in the padded image
-    img_pad : padded image
-    Hp, Wp : padded height/width
-    pads : (top_pad, bottom_pad, left_pad, right_pad)
-    """
-    H, W = img.shape[:2]
-    stride = tile - overlap
-    Hp, Wp = _reflect_pad_to_cover(H, W, tile, overlap)
-    pad_y = Hp - H
-    pad_x = Wp - W
 
-    # Split padding per side without going negative.
-    top_pad = int(min(pad_y, overlap // 2))
-    bottom_pad = int(pad_y - top_pad)
-    left_pad = int(min(pad_x, overlap // 2))
-    right_pad = int(pad_x - left_pad)
-
-    assert top_pad >= 0 and bottom_pad >= 0 and left_pad >= 0 and right_pad >= 0
-
-    img_pad = np.pad(
-        img,
-        ((top_pad, bottom_pad), (left_pad, right_pad), (0, 0)),
-        mode="reflect",
-    )
-
-    tiles: List[Tuple[int, int, np.ndarray]] = []
-    for y in range(0, Hp - tile + 1, stride):
-        for x in range(0, Wp - tile + 1, stride):
-            tiles.append((y, x, img_pad[y : y + tile, x : x + tile, :]))
-
-    return tiles, img_pad, Hp, Wp, (top_pad, bottom_pad, left_pad, right_pad)
+def _merge_tiles_row_major(tiles: List[np.ndarray], grid: Tuple[int, int]) -> np.ndarray:
+    rows, cols = grid
+    assert len(tiles) == rows * cols, "Tile count must equal rows*cols."
+    H, W, C = tiles[0].shape
+    for t in tiles:
+        assert t.shape == (H, W, C), "All tiles must share identical H, W, and C."
+    row_blocks, idx = [], 0
+    for _ in range(rows):
+        row_tiles = tiles[idx : idx + cols]
+        row_blocks.append(np.hstack(row_tiles))
+        idx += cols
+    return np.vstack(row_blocks)
 
 
 def predict_rgb_to_hsi(
-    image: np.ndarray,
+    images: Union[np.ndarray, List[np.ndarray]],
     onnx_path: str,
-    tile: int = 256,
-    overlap: int = 64,
-    batch_size: int = 4,
+    stride: int = 16,  # 0/None disables; use 8/16 to match net downsampling
+    device_providers: Sequence[str] = ("CUDAExecutionProvider", "CPUExecutionProvider"),
+    grid: Optional[Tuple[int, int]] = None,  # only used when a list is passed
 ) -> np.ndarray:
     """
-    Run a 256x256-only ONNX model over an arbitrary-size RGB image by tiling + blending.
-    Handles models with fixed batch dimension (e.g., N=4) by padding short batches.
-
-    Args
-    ----
-    image: HxWx3 (uint8 in [0,255] or float in [0,1]), sRGB-encoded.
-    onnx_path: path to the fixed-size ONNX model (expects NCHW 1x3x256x256 typically).
-    tile: tile size (must be what the model expects; 256 here).
-    overlap: pixels of overlap between tiles to suppress seams (e.g., 32~64).
-    batch_size: how many tiles to run per session.run call.
-
-    Returns
-    -------
-    HxWxC_hsi float32 HSI cube (same H, W as input; bands from the model).
+    Predict HSI with a dynamic-axes ONNX and return a SINGLE HxWxC array.
+      - Single RGB image → returns its HSI.
+      - List of RGB tiles → merges their HSIs into one image (row-major order).
     """
-    assert image.ndim == 3 and image.shape[2] == 3, "Input must be HxWx3."
-
-    # Normalize to float32 [0,1]
-    if np.issubdtype(image.dtype, np.integer):
-        img = image.astype(np.float32) / 255.0
+    # Normalize to a list
+    if isinstance(images, np.ndarray):
+        imgs = [images]
+        merging = False
     else:
-        img = image.astype(np.float32)
-        if img.max() > 1.001:
-            img = np.clip(img / 255.0, 0.0, 1.0)
+        imgs = list(images)
+        merging = True
 
-    # Tiles + exact pads
-    tiles, img_pad, Hp, Wp, pads = _extract_tiles(img, tile=tile, overlap=overlap)
-    top_pad, bottom_pad, left_pad, right_pad = pads
+    # Session
+    sess = ort.InferenceSession(onnx_path, providers=list(device_providers))
+    in_name = sess.get_inputs()[0].name
+    out_name = sess.get_outputs()[0].name
 
-    # Edge-case: extremely small input → single tile
-    if len(tiles) == 0:
-        Hp = max(tile, img.shape[0])
-        Wp = max(tile, img.shape[1])
-        pad_y = Hp - img.shape[0]
-        pad_x = Wp - img.shape[1]
-        img_pad = np.pad(img, ((0, pad_y), (0, pad_x), (0, 0)), mode="reflect")
-        tiles = [(0, 0, img_pad[:tile, :tile, :])]
-        top_pad = left_pad = 0
-        bottom_pad = pad_y
-        right_pad = pad_x
-
-    hann = _hann2d(tile, tile).astype(np.float32)[..., None]  # (tile, tile, 1)
-
-    # Session + IO meta
-    sess = ort.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
-    input_meta = sess.get_inputs()[0]
-    input_name = input_meta.name
-    output_name = sess.get_outputs()[0].name
-
-    # Static batch detection (e.g., 4) or dynamic (None)
-    dim0 = input_meta.shape[0]
-    static_batch_k: int | None = dim0 if isinstance(dim0, int) else None
-
-    # Probe with N==k if k is static; else N==1 is fine
-    y0, x0, t0 = tiles[0]
-    one_tile = t0.transpose(2, 0, 1)[None, ...]  # 1x3xHxW (NCHW typical)
-    probe = np.repeat(one_tile, static_batch_k, axis=0) if static_batch_k and static_batch_k > 1 else one_tile
-    out0_any: Any = sess.run([output_name], {input_name: probe})[0]
+    # Probe output layout
+    probe_img = _to_float01(imgs[0])
+    probe_img, _pads = _pad_to_multiple_reflect(probe_img, stride) if stride and stride > 0 else (probe_img, (0, 0, 0, 0))
+    probe_nchw = probe_img.transpose(2, 0, 1)[None, ...]  # 1x3xH'xW'
+    out0_any: Any = sess.run([out_name], {in_name: probe_nchw})[0]
     out0 = cast(np.ndarray, out0_any)
     if out0.ndim != 4:
-        raise RuntimeError("Unexpected ONNX output rank; expected 4D (N,C,H,W or N,H,W,C).")
+        raise RuntimeError("Expected 4D ONNX output (N,C,H,W) or (N,H,W,C).")
     _, d1, d2, d3 = out0.shape
-    if d2 == tile and d3 == tile:  # NCHW
-        out_is_nchw = True
-        C_hsi = d1
-    elif d1 == tile and d2 == tile:  # NHWC
-        out_is_nchw = False
-        C_hsi = d3
+    Ht, Wt = probe_nchw.shape[-2:]
+    if d2 == Ht and d3 == Wt:
+        out_is_nchw, C_hsi = True, d1
+    elif d1 == Ht and d2 == Wt:
+        out_is_nchw, C_hsi = False, d3
     else:
-        raise RuntimeError("Cannot infer output layout; dims do not match tile size.")
+        out_is_nchw, C_hsi = True, d1  # fallback
 
-    # Accumulators
-    H, W = image.shape[:2]
-    out_accum = np.zeros((Hp, Wp, C_hsi), dtype=np.float32)
-    w_accum = np.zeros((Hp, Wp, C_hsi), dtype=np.float32)
+    # Run per image/tile
+    hsi_tiles: List[np.ndarray] = []
+    for im in imgs:
+        x = _to_float01(im)
+        pads = (0, 0, 0, 0)
+        if stride and stride > 0:
+            x, pads = _pad_to_multiple_reflect(x, stride)
+        x_nchw = x.transpose(2, 0, 1)[None, ...]
+        pred_any: Any = sess.run([out_name], {in_name: x_nchw})[0]
+        pred = cast(np.ndarray, pred_any)
+        if out_is_nchw:
+            pred = np.transpose(pred, (0, 2, 3, 1))  # 1xH'xW'xC
+        hsi = pred[0]
+        if stride and pads != (0, 0, 0, 0):
+            hsi = _crop_pads(hsi, pads)
+        hsi_tiles.append(hsi.astype(np.float32, copy=False))
 
-    # If static batch k, align chunk size to k
-    if static_batch_k and static_batch_k > 1:
-        batch_size = static_batch_k
+    # If list was passed, merge tiles; else return the single result
+    if not merging:
+        return hsi_tiles[0]
 
-    def run_batch(batch_tiles: List[Tuple[int, int, np.ndarray]]) -> None:
-        if not batch_tiles:
-            return
-
-        batch = np.stack([t[2].transpose(2, 0, 1) for t in batch_tiles], axis=0)  # Nx3xHxW
-        Ncur = batch.shape[0]
-
-        if static_batch_k and static_batch_k > 1:
-            k = static_batch_k
-            if Ncur < k:
-                pad = np.repeat(batch[-1:], k - Ncur, axis=0)  # repeat last tile
-                feed = np.concatenate([batch, pad], axis=0)  # kx3xHxW
-            else:
-                feed = batch[:k]
-            preds_any: Any = sess.run([output_name], {input_name: feed})[0]
-            preds = cast(np.ndarray, preds_any)
-            if out_is_nchw:
-                preds = np.transpose(preds, (0, 2, 3, 1))  # kxHxWxC
-            preds_use = preds[: len(batch_tiles)]  # discard padded extras
-        else:
-            preds_any: Any = sess.run([output_name], {input_name: batch})[0]
-            preds = cast(np.ndarray, preds_any)
-            if out_is_nchw:
-                preds = np.transpose(preds, (0, 2, 3, 1))  # NxHxWxC
-            preds_use = preds
-
-        for (y, x, _), pred in zip(batch_tiles, preds_use):
-            w = hann if C_hsi == 1 else np.repeat(hann, C_hsi, axis=2)
-            out_accum[y : y + tile, x : x + tile, :] += pred * w
-            w_accum[y : y + tile, x : x + tile, :] += w
-
-    # Iterate in mini-batches
-    cursor = 0
-    Ntiles = len(tiles)
-    while cursor < Ntiles:
-        run_batch(tiles[cursor : cursor + batch_size])
-        cursor += batch_size
-
-    # Normalize + crop using the EXACT pads we added
-    stitched = out_accum / np.maximum(w_accum, 1e-8)
-    stitched = stitched[top_pad : top_pad + H, left_pad : left_pad + W, :]
-
-    return stitched.astype(np.float32)
+    # Merge: require uniform tile size
+    Hs = {t.shape[0] for t in hsi_tiles}
+    Ws = {t.shape[1] for t in hsi_tiles}
+    if len(Hs) != 1 or len(Ws) != 1:
+        raise ValueError("All tiles must have the SAME height and width to merge.")
+    rows, cols = grid if grid is not None else _infer_grid(len(hsi_tiles))
+    return _merge_tiles_row_major(hsi_tiles, (rows, cols))

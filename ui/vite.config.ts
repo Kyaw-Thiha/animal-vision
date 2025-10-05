@@ -41,7 +41,7 @@ export default defineConfig({
     })
   ],
   server:{
-    allowedHosts : ["0eff2f8480e5.ngrok-free.app"],
+    allowedHosts : ["6c9eb49ca71b.ngrok-free.app"],
     proxy: {
       "/getpic": {
         target: "https://animal.yoshixi.net",

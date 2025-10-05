@@ -7,6 +7,7 @@ import { io, Socket } from "socket.io-client"
 
 function Video() {
     const navigate = useNavigate();
+    const [messageText, setMessageText] = useState("Hi, you are viewing as a human");
     const videoPlayerRef = useRef<HTMLVideoElement>(null); 
     const canvasRef = useRef<HTMLCanvasElement>(null); 
     const hiddencanvasRef = useRef<HTMLCanvasElement>(null); 
@@ -133,6 +134,27 @@ function Video() {
       return () => clearInterval(interval); // This represents the unmount function, in which you need to clear your interval to prevent memory leaks.
     }, [captureImage])
 
+    useEffect(() => {
+      const interval = setInterval(() => {
+        askGemini()
+      }, 10000);
+    
+      return () => clearInterval(interval); // This represents the unmount function, in which you need to clear your interval to prevent memory leaks.
+    }, [askGemini])
+
+    async function askGemini(animal){
+        fetch("`http://localhost:8000/gettip?animal=${encodeURIComponent(animal)}`", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/form",
+            },
+            signal
+          })
+          .then(response => response.json())
+          .then(result => setMessageText(result))
+          .catch(error => console.error('Error:', error));
+        }       
+        
     return (
         <>
         <div className="flex justify-center">
@@ -323,6 +345,9 @@ function Video() {
            >
                Panda
            </button> 
+           <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-yellow-200 rounded-sm border-2 w-[80%] h-10 flex justify-center items-center text-center">
+               {messageText} {/* Replace 'messageText' with your state variable for programmable text */}
+           </div>
         </div>
         </>
     )

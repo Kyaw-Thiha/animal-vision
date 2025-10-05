@@ -24,6 +24,7 @@ scipy
 h5py
 hdf5storage
 tqdm
+colour-science
 
 onnx 
 onnxruntime-gpu

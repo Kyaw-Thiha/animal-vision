@@ -3,6 +3,7 @@ import numpy as np
 
 from ml.MST_plus_plus.predict_code.predict import predict_rgb_to_hsi
 from ml.MST_plus_plus.predict_code.predict_torch import predict_rgb_to_hsi_torch
+from ml.classic_rgb_to_hsi.classic_rgb_to_hsi import classic_rgb_to_hsi
 from animals.animal import Animal
 
 try:
@@ -59,7 +60,9 @@ class HoneyBee(Animal):
         hsi_band_centers_nm: Optional[np.ndarray] = None,
         illuminant: Optional[Callable[[np.ndarray], np.ndarray]] = None,
         adaptation: Optional[Literal["white_patch", "gray_world"]] = "white_patch",
-        mapping_mode: Literal["falsecolor", "custom_matrix", "opponent"] = "opponent",
+        mapping_mode: Literal[
+            "falsecolor", "custom_matrix", "opponent", "uv_purple_yellow", "falsecolor_uv_mixed"
+        ] = "uv_purple_yellow",
         custom_matrix: Optional[np.ndarray] = None,
         blur_sigma_px: Optional[float] = 0.2,
         assume_hsi_is_reflectance: bool = True,
@@ -98,15 +101,16 @@ class HoneyBee(Animal):
     def visualize(self, image: np.ndarray) -> Optional[Tuple[np.ndarray, np.ndarray]]:
         """Run the honeybee vision pipeline on an HxWx3 RGB image."""
         # 0) Validate & normalize
-        assert isinstance(input, np.ndarray), "Input must be a numpy ndarray."
-        assert input.ndim == 3 and input.shape[2] == 3, "Input must be HxWx3 RGB."
+        assert isinstance(image, np.ndarray), "Input must be a numpy ndarray."
+        assert image.ndim == 3 and image.shape[2] == 3, "Input must be HxWx3 RGB."
 
-        orig_dtype = input.dtype
-        img = self._to_float01(input)
+        orig_dtype = image.dtype
+        img = self._to_float01(image)
 
         # 1) RGB → HSI via your ML model
         # hsi = predict_rgb_to_hsi(img, self.onnx_path)  # shape (H,W,C_hsi), float32
-        hsi = predict_rgb_to_hsi_torch(img, "mst_plus_plus", "./ml/MST_plus_plus/model_zoo/mst_plus_plus.pth")
+        # hsi = predict_rgb_to_hsi_torch(img, "mst_plus_plus", "./ml/MST_plus_plus/model_zoo/mst_plus_plus.pth", overlap=512)
+        hsi = classic_rgb_to_hsi(img, wavelengths=np.asarray(self.lambdas, dtype=np.float32))
         assert hsi.ndim == 3 and hsi.shape[:2] == img.shape[:2], "HSI must match H and W."
         bands = hsi.shape[2]
         assert bands == len(self.lambdas), f"HSI bands ({bands}) != length of provided band centers ({len(self.lambdas)})."
@@ -147,6 +151,12 @@ class HoneyBee(Animal):
             rgb_lin = self._map_linear_matrix(U, B, G, self.custom_matrix)
         elif self.mapping_mode == "opponent":
             rgb_lin = self._map_opponent(U, B, G)
+        elif self.mapping_mode == "uv_purple_yellow":
+            rgb_lin = self._map_uv_purple_yellow_soft(U)
+            assert rgb_lin.ndim == 3 and rgb_lin.shape[2] == 3, f"uv_purple_yellow returned {rgb_lin.shape}"
+        elif self.mapping_mode == "falsecolor_uv_mixed":
+            self.uv_mix_alpha = 0.45  # [0.25 - 0.45]
+            rgb_lin = self._map_falsecolor_uv_mixed(U, B, G, alpha=self.uv_mix_alpha)
         else:
             raise ValueError(f"Unknown mapping_mode: {self.mapping_mode}")
 
@@ -273,6 +283,121 @@ class HoneyBee(Animal):
         hsv = np.stack([hue, np.clip(sat, 0, 1), np.clip(val, 0, 1)], axis=2)
         rgb = self._hsv_to_rgb(hsv)  # returns linear-like RGB in [0,1]
         return rgb
+
+    def _map_uv_purple_yellow(self, U: np.ndarray) -> np.ndarray:
+        U = np.asarray(U)
+        if U.ndim == 3 and U.shape[2] == 1:
+            U = U[..., 0]
+        elif U.ndim != 2:
+            raise ValueError(f"U must be HxW or HxWx1, got shape {U.shape}")
+
+        denom = float(np.percentile(U, 99.0))
+        denom = max(denom, float(self._eps))
+        u = (U.astype(np.float32) / denom).clip(0.0, 1.0)
+        u = u**0.85  # gentle boost
+
+        # endpoints in sRGB (vivid yellow & deep purple), then convert to linear
+        c_purple_srgb = np.array([128, 0, 150], np.float32) / 255.0
+        c_yellow_srgb = np.array([255, 225, 60], np.float32) / 255.0
+
+        def srgb_to_linear(v: np.ndarray) -> np.ndarray:
+            a = 0.055
+            return np.where(v <= 0.04045, v / 12.92, ((v + a) / (1 + a)) ** 2.4).astype(np.float32)
+
+        c0 = srgb_to_linear(c_purple_srgb)  # (3,)
+        c1 = srgb_to_linear(c_yellow_srgb)  # (3,)
+
+        u3 = u[..., None]  # (H,W,1)
+        rgb_lin = (1.0 - u3) * c0[None, None, :] + u3 * c1[None, None, :]  # (H,W,3)
+        return np.ascontiguousarray(np.clip(rgb_lin, 0.0, 1.0), dtype=np.float32)
+
+    def _map_uv_purple_yellow_soft(
+        self,
+        U: np.ndarray,
+        *,
+        u_gamma: float = 0.90,  # <1 lifts midtones
+        accent_gamma: float = 0.85,  # UV accent falloff
+        accent_strength: float = 0.05,  # 0..0.4: more = purpler in high-UV
+    ) -> np.ndarray:
+        """
+        Warm, pastel UV-only visualization (lavender → warm sunflower),
+        with gentle UV accent and luminance control. Returns linear sRGB (HxWx3).
+        """
+        # --- ensure U is HxW ---
+        U = np.asarray(U)
+        if U.ndim == 3 and U.shape[2] == 1:
+            U = U[..., 0]
+        elif U.ndim != 2:
+            raise ValueError(f"U must be HxW or HxWx1, got {U.shape}")
+
+        eps = float(self._eps)
+
+        # 1) Robust normalize (keep contrast), *no* later percentile division
+        denom = float(np.percentile(U, 98.0))
+        denom = max(denom, eps)
+        u = (U.astype(np.float32) / denom).clip(0.0, 1.0)
+        u = u ** float(u_gamma)  # midtone lift
+
+        # 2) Endpoints in sRGB (pleasant, warm)
+        #    lavender  #B07CE8  →  warm sunflower  #FFD38A
+        c_purple_srgb = np.array([176, 124, 232], np.float32) / 255.0
+        c_warm_srgb = np.array([255, 211, 138], np.float32) / 255.0
+
+        def srgb_to_linear(v: np.ndarray) -> np.ndarray:
+            a = 0.055
+            return np.where(v <= 0.04045, v / 12.92, ((v + a) / (1 + a)) ** 2.4).astype(np.float32)
+
+        c0 = srgb_to_linear(c_purple_srgb)  # (3,)
+        c1 = srgb_to_linear(c_warm_srgb)  # (3,)
+
+        # 3) Base interpolation in *linear* RGB
+        u3 = u[..., None]  # (H,W,1)
+        rgb_lin = (1.0 - u3) * c0 + u3 * c1  # (H,W,3)
+
+        # 4) UV accent (adds a touch of purple in high-UV areas, without killing warmth)
+        gray = np.array([0.5, 0.5, 0.5], np.float32)
+        purple_dir = c0 - gray  # direction toward purple
+        a = float(accent_strength)
+        if a > 0:
+            w = (u ** float(accent_gamma))[..., None]  # more accent where UV is strong
+            rgb_lin = rgb_lin + a * w * purple_dir
+
+        # 5) Luminance targeting: keep overall brightness warm & natural
+        #    Target Y rises with UV so highlights don't look chalky.
+        Y = (0.2126 * rgb_lin[..., 0] + 0.7152 * rgb_lin[..., 1] + 0.0722 * rgb_lin[..., 2]) + eps
+        Y_target = np.clip(0.22 + 0.55 * u, 0.0, 1.0)  # gentle warm lift with UV
+        gain = (Y_target / Y)[..., None]
+        gain = np.clip(gain, 0.6, 1.6)  # avoid extreme rescaling
+        rgb_lin = rgb_lin * gain
+
+        # 6) Mild soft-clip to prevent harsh whites (so it reads as pastel, not blown)
+        rgb_lin = rgb_lin / (1.0 + 0.6 * rgb_lin)
+
+        return np.clip(np.ascontiguousarray(rgb_lin, dtype=np.float32), 0.0, 1.0)
+
+    def _map_falsecolor_uv_mixed(self, U: np.ndarray, B: np.ndarray, G: np.ndarray, alpha: float = 0.35) -> np.ndarray:
+        """
+        Blend falsecolor with the UV purple↔yellow tint in *linear sRGB*.
+        alpha=0 -> pure falsecolor; alpha=1 -> pure UV tint.
+        """
+        # Base: your existing falsecolor mapping
+        base = self._map_falsecolor(U, B, G)  # (H,W,3), linear
+        # UV tint layer
+        uv_tint = self._map_uv_purple_yellow_soft(U)  # (H,W,3), linear
+
+        # Convex blend in linear RGB
+        alpha = float(np.clip(alpha, 0.0, 1.0))
+        mixed = (1.0 - alpha) * base + alpha * uv_tint  # (H,W,3)
+
+        # Optional soft re-normalization to keep highlights sane
+        # (keeps your pipeline stable before gamma encoding)
+        p95 = np.percentile(mixed, 99.0)
+        if p95 > 1e-8:
+            p95 = np.float32(np.percentile(mixed, 99.0))
+            scale = np.maximum(np.float32(1.0), p95)
+            mixed = mixed / float(scale)
+
+        return np.clip(mixed.astype(np.float32), 0.0, 1.0)
 
     # ------------------- Utilities -------------------
 

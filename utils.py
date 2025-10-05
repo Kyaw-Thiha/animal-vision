@@ -4,7 +4,7 @@ from typing import List, Tuple
 from InquirerPy import inquirer
 
 from animals.animal import Animal
-from animals import Cat, Dog
+from animals import Cat, Dog, Sheep, Pig, Goat, Cow
 
 
 def choose_file(input_dir: str, extensions: Tuple[str, ...]) -> str:
@@ -63,6 +63,10 @@ def choose_animal() -> Animal:
     animal_choices = [
         {"name": "Cat", "value": Cat()},
         {"name": "Dog", "value": Dog()},
+        {"name": "Sheep", "value": Sheep()},
+        {"name": "Pig", "value": Pig()},
+        {"name": "Goat", "value": Goat()},
+        {"name": "Cow", "value": Cow()},
     ]
     animal_choice = inquirer.select(  # type: ignore[reportPrivateImportUsage]
         message="Select which animal you want to visualize:",
@@ -71,3 +75,5 @@ def choose_animal() -> Animal:
     ).execute()
 
     return animal_choice
+
+

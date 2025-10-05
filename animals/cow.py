@@ -1,27 +1,16 @@
 from typing import Optional
 import numpy as np
+
 from animals.animal_utils import *
 
 from animals.animal import Animal
 
 
-class Cat(Animal):
+class Cow(Animal):
     def visualize(self, image: np.ndarray) -> Optional[np.ndarray]:
         pass
         """
-        Simulate a simple dog-vision rendering from an RGB image.
-
-        Steps:
-        1) Validate input is an RGB image.
-        2) Normalize the image
-        3) Convert sRGB -> linear RGB.
-        4) Map linear RGB to LMS, collapse L & M to a single “LM” channel (dichromacy proxy),
-           keep S as-is, then map back LMS -> linear RGB.
-        5) Convert linear RGB -> sRGB and return in original dtype.
-
-        - alpha = 0.4 for collapsing LMS matrix
-        - gamma = 1.0 for acuity blur
-
+        Simulate a simple cow-vision rendering from an RGB image.
         """
 
         # ---------- 1) validate input ----------
@@ -38,17 +27,14 @@ class Cat(Animal):
         vector_image_srgb = linear_normalized_image.reshape(-1, 3)
 
         # ---------- 4) linear RGB -> LMS, collapse L/M (dichromacy proxy), LMS -> linear RGB ----------
-        cat_matrix = collapse_LMS_matrix(0.45, 0.80)
-        result_in_rgb = vector_image_srgb @ cat_matrix.T
+        cow_matrix = collapse_LMS_matrix(0.84, 1.07)
+        result_in_rgb = vector_image_srgb @ cow_matrix.T
         result_in_rgb = result_in_rgb.reshape(linear_normalized_image.shape)
 
         # ---------- 5) apply blur ----------
-        result_in_rgb = apply_acuity_blur(result_in_rgb, 1.0)
+        result_in_rgb = apply_anisotropic_acuity_blur_with_streak(result_in_rgb, 0.5, 0.9, 2.3, 6.5)
 
-        # ---------- 6) deal with night vision ----------
-        # add your code here
-
-        # ---------- 7) linear -> sRGB and restore dtype ----------
+        # ---------- 6) linear -> sRGB and restore dtype ----------
         result_in_srgb = np.clip(linear_to_srgb(np.clip(result_in_rgb, 0.0, 1.0)), 0.0, 1.0)
 
         if np.issubdtype(orig_dtype, np.integer):

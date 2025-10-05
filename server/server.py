@@ -89,7 +89,8 @@ async def getpic(payload: PostImageRequest):
 
 @app.post("/gettip")
 async def gettip(animal : str):
-    return promptmodel(f"Provide a short fact about the eyes and vision of {animal}")
+    return ""
+    #return promptmodel(f"Provide a short fact about the eyes and vision of {animal}")
 
 if __name__ == "__main__":
     import uvicorn

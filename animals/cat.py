@@ -1,6 +1,7 @@
 from typing import Optional
 import numpy as np
 from animals.animal_utils import *
+from animals.animal_utils2 import *
 
 from animals.animal import Animal
 
@@ -37,18 +38,44 @@ class Cat(Animal):
         # height, width, _ = linear_normalized_image.shape
         vector_image_srgb = linear_normalized_image.reshape(-1, 3)
 
-        # ---------- 4) linear RGB -> LMS, collapse L/M (dichromacy proxy), LMS -> linear RGB ----------
+        # ---------- 4) deal with night vision ----------
+
+        if not check_is_day(linear_normalized_image, linear_rgb=True):
+            print("is night")
+            # apply_rod_vision returns a new image — assign it back
+            linear_normalized_image = apply_rod_vision(
+                linear_normalized_image,
+                chroma_scale=0.07,
+                luminance_boost=1.8,
+                gamma=0.7,
+            )
+
+        # ---------- 5) linear RGB -> LMS, collapse L/M (dichromacy proxy), LMS -> linear RGB ----------
         cat_matrix = collapse_LMS_matrix(0.45, 0.80)
         result_in_rgb = vector_image_srgb @ cat_matrix.T
         result_in_rgb = result_in_rgb.reshape(linear_normalized_image.shape)
 
-        # ---------- 5) apply blur ----------
+        # ---------- 6) apply blur ----------
         result_in_rgb = apply_acuity_blur(result_in_rgb, 1.0)
 
-        # ---------- 6) deal with night vision ----------
-        # add your code here
+        # ---------- 7) deal with FOV ----------
+        H, W = result_in_rgb.shape[:2]
+        enlarged = enlarge_then_crop(
+                result_in_rgb,
+                scale=1.6,
+                out_size=(W, H),
+                crop_anchor="center",
+                pad_value=0.0,
+            )
+        result_in_rgb = animal_fov_binocular_warp(
+                enlarged,
+                fov_in_deg=60.0,
+                per_eye_half_fov_deg=100.0,
+                overlap_deg=80.0,
+                out_size=(W, H),
+            )
 
-        # ---------- 7) linear -> sRGB and restore dtype ----------
+        # ---------- 8) linear -> sRGB and restore dtype ----------
         result_in_srgb = np.clip(linear_to_srgb(np.clip(result_in_rgb, 0.0, 1.0)), 0.0, 1.0)
 
         if np.issubdtype(orig_dtype, np.integer):

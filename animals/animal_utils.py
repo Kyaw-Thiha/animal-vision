@@ -202,3 +202,50 @@ def apply_tapetum_bloom(image: np.ndarray, strength: float = 0.12, sigma: float 
     screen = 1.0 - (1.0 - x) * (1.0 - blur)
     y = x + strength * mask * (screen - x)
     return np.clip(y, 0.0, 1.0).astype(image.dtype, copy=False)
+
+
+def apply_rod_vision(
+    image: np.ndarray, 
+    chroma_scale: float = 0.08,
+    luminance_boost: float = 1.4,
+    gamma: float = 0.8
+) -> np.ndarray:
+    """
+    Approximate scotopic (rod-dominant) night vision.
+
+    Parameters
+    ----------
+    image : np.ndarray
+        Linear RGB image (0..1 range recommended).
+    chroma_scale : float
+        Scale factor for color saturation; smaller = more monochrome.
+        Rod vision has nearly no color discrimination, so this is usually 0.05–0.15.
+    luminance_boost : float
+        Brightness multiplier to simulate rods’ higher sensitivity in dim light.
+    gamma : float
+        Contrast remapping exponent (<1 brightens midtones).
+
+    Returns
+    -------
+    np.ndarray
+        Rod-dominant (night) vision image.
+    """
+    import cv2, numpy as np
+
+    x = np.clip(image.astype(np.float32), 0.0, 1.0)
+
+    # --- 1) Compute luminance (scotopic weighting) ---
+    # Human scotopic luminosity peaks ~507 nm (~green-blue), 
+    # close to rod spectral sensitivity.
+    L = 0.1 * x[..., 0] + 0.8 * x[..., 1] + 0.1 * x[..., 2]
+    L = cv2.GaussianBlur(L, (0, 0), sigmaX=1.2, sigmaY=1.2)
+
+    # --- 2) Desaturate heavily (rods = achromatic) ---
+    gray = L[..., None]
+    x = gray * (1 - chroma_scale) + x * chroma_scale
+
+    # --- 3) Boost luminance and apply gamma ---
+    x = np.clip(x * luminance_boost, 0.0, 1.0)
+    x = np.power(x, gamma)
+
+    return x.astype(image.dtype, copy=False)

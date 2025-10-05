@@ -8,6 +8,7 @@ from InquirerPy import inquirer
 from animals.anchovy import Anchovy
 from animals.animal import Animal
 from animals.damselfish import Damselfish
+from animals.dragonfly import Dragonfly
 from animals.goldfish import Goldfish
 from animals.guppy import Guppy
 from animals.heliconius import Heliconius
@@ -319,6 +320,7 @@ def choose_animal() -> Animal:
         {"name": "Mantis Shrimp", "value": MantisShrimp()},
         {"name": "Kestrel", "value": Kestrel()},
         {"name": "Jumping Spider", "value": JumpingSpider()},
+        {"name": "DragonFly", "value": Dragonfly()},
     ]
     animal_choice = inquirer.select(  # type: ignore[reportPrivateImportUsage]
         message="Select which animal you want to visualize:",

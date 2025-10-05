@@ -1,35 +1,65 @@
 import "./App.css"
-import {useRef, useState, useEffect} from 'react'
-import { io } from "socket.io-client"
+import {useRef, useState, useEffect, useCallback} from 'react'
+import { io, Socket } from "socket.io-client"
 
 function Video() {
-    const socket = io('http://127.0.0.1:8000')
-    const videoPlayerRef = useRef(null); 
-    const canvasRef = useRef(null); 
-    const hiddencanvasRef = useRef(null); 
+    const videoPlayerRef = useRef<HTMLVideoElement>(null); 
+    const canvasRef = useRef<HTMLCanvasElement>(null); 
+    const hiddencanvasRef = useRef<HTMLCanvasElement>(null); 
     const [openCamera, setOpenCamera] = useState(true); 
-    const [image, setImage] = useState(""); 
-    const [animal, setAnimal] = useState("cat"); 
-    const [connection, setConnection] = useState(null);
-   
-    socket.on('connect', () => {
-        console.log(`You connected to the server with id ${socket.id}`);
-    })
+    const [animal, setAnimal] = useState("human"); 
+    const [socket, setSocket] = useState<Socket | null>(null);
 
-    socket.on('getimage', (imagedata) => {
-        console.log(imagedata)
-        if (imagedata['image'] != null){
-            const imager = imagedata['image'];
-            const canvas = canvasRef.current;
-            const canvasctx = canvas.getContext("2d");
-            const img = new Image();
-            img.onload = function() {
-                canvasctx.drawImage(img, 0, 0);
-            };
-            img.src = imager;
-            }   
+    useEffect(() => {
+        const newSocket = io('http://127.0.0.1:8000');
+        setSocket(newSocket);
+
+        newSocket.on('connect', () => {
+            console.log(`You connected to the server with id ${newSocket.id}`);
+        });
+
+        newSocket.on('getimage', (imagedata) => {
+            console.log(imagedata)
+            if (imagedata['image'] != null){
+                const imager = imagedata['image'];
+                const canvas = canvasRef.current;
+                if (canvas) {
+                    const canvasctx = canvas.getContext("2d");
+                    const img = new Image();
+                    img.onload = function() {
+                        if (canvasctx) {
+                            canvasctx.drawImage(img, 0, 0);
+                        }
+                    };
+                    img.src = imager;
+                }
+                }   
+            }
+        );
+
+        return () => {
+            newSocket.close();
+        };
+    }, []);
+
+    const captureImage = useCallback(() => {
+        const hiddencanvas = hiddencanvasRef.current;
+        const video = videoPlayerRef.current;
+        if (video && socket && hiddencanvas){
+            const ctx = hiddencanvas.getContext("2d");
+            if (ctx) {
+                ctx.drawImage(video, 0, 0, hiddencanvas.width, hiddencanvas.height); 
+                //const image = hiddencanvas.toDataURL("image/png") //.replace("image/png", "image/octet-stream");
+                //socket.emit('sendimage', image, animal);
+
+                hiddencanvas.toBlob((blob: Blob | null) => {
+                    if (blob) {
+                        socket.emit('sendimage', blob, animal);
+                    }
+                }, "image/jpeg", 0.8); // JPEG at 80% quality for smaller size
+            }
         }
-    );
+    }, [socket, animal]);
 
     useEffect( () => {
         if (openCamera) {
@@ -48,9 +78,11 @@ function Video() {
                 video: { facingMode: 'environment' },
                 audio: false
               });
-            videoPlayerRef.current.srcObject = stream;
+            if (videoPlayerRef.current) {
+                videoPlayerRef.current.srcObject = stream;
+            }
         } catch (error) {
-            console.error("ERROR HER");
+            console.error("ERROR HER", error);
         }
     }
 
@@ -60,23 +92,7 @@ function Video() {
       }, 200);
     
       return () => clearInterval(interval); // This represents the unmount function, in which you need to clear your interval to prevent memory leaks.
-    }, [])
-    
-
-    const captureImage = () => {
-        const hiddencanvas = hiddencanvasRef.current;
-        const video = videoPlayerRef.current;
-        if (video){
-            const ctx = hiddencanvas.getContext("2d");
-            ctx.drawImage(video, 0, 0, hiddencanvas.width, hiddencanvas.height); 
-            //const image = hiddencanvas.toDataURL("image/png") //.replace("image/png", "image/octet-stream");
-            //socket.emit('sendimage', image, animal);
-
-            hiddencanvas.toBlob((blob) => {
-                socket.emit('sendimage', blob, animal);
-            }, "image/jpeg", 0.8); // JPEG at 80% quality for smaller size
-        }
-    }
+    }, [captureImage])
 
     return (
         <>
@@ -104,9 +120,62 @@ function Video() {
 
         </div>
         <div className="bottom-0 h-20 flex flex-row absolute w-screen justify-center">
-           <button className="bg-amber-500 w-20 rounded-sm border-2 mx-5">
-            Cat
-            </button> 
+           <button 
+               className={`w-20 rounded-sm border-2 mx-5 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+                   animal === "human" ? "bg-amber-300" : "bg-amber-500"
+               }`} 
+               onClick={ () => {setAnimal("human")}}
+           >
+               Human
+           </button> 
+           <button 
+               className={`w-20 rounded-sm border-2 mx-5 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+                   animal === "cat" ? "bg-amber-300" : "bg-amber-500"
+               }`} 
+               onClick={ () => {setAnimal("cat")}}
+           >
+               Cat
+           </button> 
+           <button 
+               className={`w-20 rounded-sm border-2 mx-5 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+                   animal === "dog" ? "bg-amber-300" : "bg-amber-500"
+               }`} 
+               onClick={ () => {setAnimal("dog")}}
+           >
+               Dog
+           </button> 
+           <button 
+               className={`w-20 rounded-sm border-2 mx-5 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+                   animal === "cow" ? "bg-amber-300" : "bg-amber-500"
+               }`} 
+               onClick={ () => {setAnimal("cow")}}
+           >
+               Cow
+           </button> 
+           <button 
+               className={`w-20 rounded-sm border-2 mx-5 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+                   animal === "goat" ? "bg-amber-300" : "bg-amber-500"
+               }`} 
+               onClick={ () => {setAnimal("goat")}}
+           >
+               Goat
+           </button> 
+           <button 
+               className={`w-20 rounded-sm border-2 mx-5 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+                   animal === "pig" ? "bg-amber-300" : "bg-amber-500"
+               }`} 
+               onClick={ () => {setAnimal("pig")}}
+           >
+               Pig
+           </button> 
+           <button 
+               className={`w-20 rounded-sm border-2 mx-5 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 ${
+                   animal === "sheep" ? "bg-amber-300" : "bg-amber-500"
+               }`} 
+               onClick={ () => {setAnimal("sheep")}}
+           >
+               Sheep
+           </button> 
         </div>
         </>
     )

@@ -275,7 +275,6 @@ def choose_animal() -> Animal:
         {"name": "Pig", "value": Pig()},
         {"name": "Goat", "value": Goat()},
         {"name": "Cow", "value": Cow()},
-        {"name": "Rat", "value": Rat()},
         {"name": "Horse", "value": Horse()},
         {"name": "Rabbit", "value": Rabbit()},
         {"name": "Panda", "value": Panda()},
@@ -292,6 +291,7 @@ def choose_animal() -> Animal:
         # UV based animals
         {"name": "HoneyBee", "value": HoneyBee()},
         {"name": "ReinDeer", "value": Reindeer()},
+        {"name": "Rat", "value": Rat()},
     ]
     animal_choice = inquirer.select(  # type: ignore[reportPrivateImportUsage]
         message="Select which animal you want to visualize:",

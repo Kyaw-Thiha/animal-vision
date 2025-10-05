@@ -24,3 +24,4 @@ from .reindeer import Reindeer
 from .rat_uv import RatUV
 from .goldfish import Goldfish
 from .damselfish import Damselfish
+from .anableps import Anableps

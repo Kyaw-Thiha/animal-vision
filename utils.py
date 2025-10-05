@@ -32,7 +32,10 @@ from animals import (
     Deer,
     Kangaroo,
     Tiger,
+    Goldfish,
     RatUV,
+    Damselfish,
+    Anableps,
 )
 
 
@@ -298,6 +301,7 @@ def choose_animal() -> Animal:
         {"name": "RatUV", "value": RatUV()},
         {"name": "GoldFish", "value": Goldfish()},
         {"name": "DamselFish", "value": Damselfish()},
+        {"name": "Anableps (Four-eyed fish)", "value": Anableps()},
     ]
     animal_choice = inquirer.select(  # type: ignore[reportPrivateImportUsage]
         message="Select which animal you want to visualize:",

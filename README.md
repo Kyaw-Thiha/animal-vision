@@ -16,6 +16,8 @@ This allow us to leverage spectral local similarity to estimate UV values.
 We then map these UV values into different receptors and render the reflectance values.
 
 ![UV Animals](./images/gallery_UV.png)
+
+These are unique animals which have interesting visualization from UV.
 ![UV Unique Animals](./images/gallery_Unique_UV.png)
 
 # Feaures

@@ -37,7 +37,31 @@ Yuanhao Cai, Jing Lin, Zudi Lin, Haoqian Wang, Yulun Zhang, Hanspeter Pfister, R
 > **Abstract:** *Existing leading methods for spectral reconstruction (SR) focus on designing deeper or wider convolutional neural networks (CNNs) to learn the end-to-end mapping from the RGB image to its hyperspectral image (HSI). These CNN-based methods achieve impressive restoration performance while showing limitations in capturing the long-range dependencies and self-similarity prior. To cope with this problem, we propose a novel Transformer-based method, Multi-stage Spectral-wise Transformer (MST++),  for efficient spectral reconstruction. In particular, we employ Spectral-wise Multi-head Self-attention (S-MSA) that is based on the HSI spatially sparse while spectrally self-similar nature to compose the basic unit, Spectral-wise Attention Block (SAB). Then SABs build up Single-stage Spectral-wise Transformer (SST) that exploits a U-shaped structure to extract multi-resolution contextual information. Finally, our MST++, cascaded by several SSTs, progressively improves the reconstruction quality from coarse to fine. Comprehensive experiments show that our MST++ significantly outperforms other state-of-the-art methods. In the NTIRE 2022 Spectral Reconstruction Challenge, our approach won the First place.* 
 <hr />
 
+## Additional Codes
+First, download the model weights from [here](https://drive.google.com/drive/folders/1G1GOA0FthtmOERJIJ0pALOSgXc6XOfoY).
+Then, unzip it in this directory (not root). It should unzipped into `model_zoo` folder. If not, make sure it is.
 
+### compile.py
+Minimal Compilation
+```bash
+python predict_code/compile.py --method mst_plus_plus --pretrained_model_path ./model_zoo/mst_plus_plus.pth
+```
+
+Detailed Compilation
+```bash
+python compile.py \
+  --method mst_plus_plus \
+  --pretrained_model_path ./model_zoo/mst_plus_plus.pth \
+  --output ./exports/mst_plus_plus.onnx \
+  --height 512 --width 512 --batch 1 --channels 3 \
+  --dynamic --opset 17 --device cuda --half
+```
+
+### predict.py
+This has a function called `predict_rgb_to_hsi`, which takes in a numpy rgb image, and output `H x W x C` numpy hyperspectral image, where `C = 31`
+```python
+predict_rgb_to_hsi(image, onnx_path)
+```
 
 ## Network Architecture
 ![Illustration of MST](/figure/MST.png)

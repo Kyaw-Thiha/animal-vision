@@ -25,4 +25,7 @@ h5py
 hdf5storage
 tqdm
 
+onnx 
+onnxruntime 
+# onnxsim
 

@@ -2,24 +2,15 @@
 import argparse
 import os
 import sys
-from typing import Any, Dict, Tuple
+from typing import Any, Dict
 
 import torch
 import torch.nn as nn
 
-import torch.backends.cudnn as cudnn
-from architecture import *
 from architecture import model_generator
-import cv2
-import numpy as np
-import itertools
 
 # ---------------------------------------------------------------------
-# You must have a function with this signature available in your project:
-#     def model_generator(method: str, pretrained_model_path: str) -> nn.Module:
-# It should build the model architecture (weights can be loaded here or below).
-# If it's in another module, import it here:
-# from your_package.models import model_generator
+# A CLI based script to compile checkpoint to ONNX.
 # ---------------------------------------------------------------------
 
 
@@ -30,7 +21,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--pretrained_model_path", type=str, default="./model_zoo/mst_plus_plus.pth")
 
     # Helpful extras:
-    parser.add_argument("--output", type=str, default=None, help="Output .onnx path (defaults to ./<method>.onnx)")
+    parser.add_argument("--output", type=str, default=None, help="Output .onnx path (defaults to ./export/<method>.onnx)")
     parser.add_argument("--height", type=int, default=256, help="Dummy input height")
     parser.add_argument("--width", type=int, default=256, help="Dummy input width")
     parser.add_argument("--channels", type=int, default=3, help="Input channels (RGB=3)")
@@ -110,10 +101,16 @@ def make_dummy_input(batch: int, channels: int, height: int, width: int, device:
 
 
 def resolve_output_path(method: str, output_arg: str | None) -> str:
+    """
+    Decide where to save the ONNX model.
+    Defaults to ./export/<method>.onnx if not explicitly set.
+    """
     if output_arg is not None:
         return output_arg
     safe = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in method)
-    return f"./{safe}.onnx"
+    export_dir = os.path.join(".", "export")
+    os.makedirs(export_dir, exist_ok=True)
+    return os.path.join(export_dir, f"{safe}.onnx")
 
 
 def to_device(model: nn.Module, device: torch.device, half: bool) -> nn.Module:
@@ -164,14 +161,9 @@ def main():
     # Build model (your project must provide this)
     print(f"[INFO] Building model with method='{opt.method}'")
     model = model_generator(opt.method, opt.pretrained_model_path)
-
-    # Move model to device and set dtype
     model = to_device(model, device, opt.half)
 
-    # Load weights if model_generator didn't already do it
     load_weights_if_needed(model, opt.pretrained_model_path, device, strict=opt.strict)
-
-    # Prepare dummy input for export
     dummy = make_dummy_input(opt.batch, opt.channels, opt.height, opt.width, device, opt.half)
 
     # Forward once to validate
@@ -187,7 +179,6 @@ def main():
 
     # Export
     out_path = resolve_output_path(opt.method, opt.output)
-    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
     export_onnx(model, dummy, out_path, opset=opt.opset, dynamic=opt.dynamic)
 
 

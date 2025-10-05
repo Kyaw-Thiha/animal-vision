@@ -95,7 +95,7 @@ class HoneyBee(Animal):
 
     # ------------------- Public API -------------------
 
-    def visualize(self, input: np.ndarray) -> Optional[np.ndarray]:
+    def visualize(self, image: np.ndarray) -> Optional[Tuple[np.ndarray, np.ndarray]]:
         """Run the honeybee vision pipeline on an HxWx3 RGB image."""
         # 0) Validate & normalize
         assert isinstance(input, np.ndarray), "Input must be a numpy ndarray."
@@ -159,7 +159,7 @@ class HoneyBee(Animal):
             out = (out_srgb * 255.0 + 0.5).astype(orig_dtype)
         else:
             out = out_srgb.astype(orig_dtype)
-        return out
+        return image, out
 
     # ------------------- Spectral Models -------------------
 

@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Tuple
 import numpy as np
 # from animals.animal_utils import srgb_to_linear
 # from animals.animal_utils import linear_to_srgb
@@ -11,8 +11,7 @@ from animals.animal import Animal
 
 
 class Dog(Animal):
-    def visualize(self, image: np.ndarray) -> Optional[np.ndarray]:
-        pass
+    def visualize(self, image: np.ndarray) -> Optional[Tuple[np.ndarray, np.ndarray]]:
         """
         Simulate a simple dog-vision rendering from an RGB image.
 
@@ -25,7 +24,7 @@ class Dog(Animal):
         5) Apply blur
         6) Convert linear RGB -> sRGB and return in original dtype.
 
-        note that 
+        note that
         - alpha = 0.6 for collapsing LMS matrix
         - gamma = 3.5 for acuity blur
         """
@@ -59,4 +58,4 @@ class Dog(Animal):
         else:
             out = result_in_srgb.astype(orig_dtype)
 
-        return out
+        return image, out

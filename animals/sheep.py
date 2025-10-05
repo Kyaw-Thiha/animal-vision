@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Tuple
 import numpy as np
 
 from animals.animal_utils import *
@@ -7,7 +7,7 @@ from animals.animal import Animal
 
 
 class Sheep(Animal):
-    def visualize(self, image: np.ndarray) -> Optional[np.ndarray]:
+    def visualize(self, image: np.ndarray) -> Optional[Tuple[np.ndarray, np.ndarray]]:
         pass
         """
         Simulate a simple sheep-vision rendering from an RGB image.
@@ -42,4 +42,4 @@ class Sheep(Animal):
         else:
             out = result_in_srgb.astype(orig_dtype)
 
-        return out
+        return image, out

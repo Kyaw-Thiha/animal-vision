@@ -2,6 +2,7 @@ from typing import Optional, Literal, Tuple, Callable
 import numpy as np
 
 from ml.MST_plus_plus.predict_code.predict import predict_rgb_to_hsi
+from ml.MST_plus_plus.predict_code.predict_torch import predict_rgb_to_hsi_torch
 from animals.animal import Animal
 
 try:
@@ -104,7 +105,8 @@ class HoneyBee(Animal):
         img = self._to_float01(input)
 
         # 1) RGB → HSI via your ML model
-        hsi = predict_rgb_to_hsi(img, self.onnx_path)  # shape (H,W,C_hsi), float32
+        # hsi = predict_rgb_to_hsi(img, self.onnx_path)  # shape (H,W,C_hsi), float32
+        hsi = predict_rgb_to_hsi_torch(img, "mst_plus_plus", "./ml/MST_plus_plus/model_zoo/mst_plus_plus.pth")
         assert hsi.ndim == 3 and hsi.shape[:2] == img.shape[:2], "HSI must match H and W."
         bands = hsi.shape[2]
         assert bands == len(self.lambdas), f"HSI bands ({bands}) != length of provided band centers ({len(self.lambdas)})."

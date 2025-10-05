@@ -1,12 +1,49 @@
 import os
-from typing import List, Tuple
 
+import base64
+from typing import List, Tuple
+import cv2
 from InquirerPy import inquirer
 
 from animals.animal import Animal
-from animals import Cat, Dog
 from animals.honeybee import HoneyBee
 
+from animals import Cat, Dog, Sheep, Pig, Goat, Cow
+
+catfilter = Cat()
+dogfilter = Dog()
+sheepfilter = Sheep()
+pigfilter = Pig()
+goatfilter = Goat()
+cowfilter = Cow()
+
+def processimage(imagedata: bytes, animal: str) -> str:
+    """
+    Takes the raw bytes of a image, and returns the specific animal it wants
+    """
+    # save image to file, and then convert that file into matrix
+    f = open("temp.jpg", 'wb')
+    f.write(imagedata)
+    f.close()
+    img = cv2.imread('temp.jpg')
+    #img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    # apply filters
+    mmat = None 
+    match animal:
+        case "human":
+            mmat = img
+        case "cat":
+            mmat = catfilter.visualize(img)
+        case _:
+            print("no case implemented here")
+    # convert mmat into blob, to make base64 URI
+    cv2.imwrite(f"tempexport.jpg", mmat)
+    f = open("tempexport.jpg", 'rb')
+    imgdata = f.read()
+    f.close()
+    base64_encoded = base64.b64encode(imgdata).decode('utf-8')
+    data_uri = f"data:image/jpeg;base64,{base64_encoded}"
+    return data_uri
 
 def choose_file(input_dir: str, extensions: Tuple[str, ...]) -> str:
     """
@@ -65,6 +102,10 @@ def choose_animal() -> Animal:
         {"name": "Cat", "value": Cat()},
         {"name": "Dog", "value": Dog()},
         {"name": "HoneyBee", "value": HoneyBee()},
+        {"name": "Sheep", "value": Sheep()},
+        {"name": "Pig", "value": Pig()},
+        {"name": "Goat", "value": Goat()},
+        {"name": "Cow", "value": Cow()},
     ]
     animal_choice = inquirer.select(  # type: ignore[reportPrivateImportUsage]
         message="Select which animal you want to visualize:",
@@ -73,3 +114,5 @@ def choose_animal() -> Animal:
     ).execute()
 
     return animal_choice
+
+

@@ -2,7 +2,7 @@ import "./App.css"
 import {useRef, useState, useEffect} from 'react'
 import { io } from "socket.io-client"
 
-function Update() {
+function Picture() {
     const socket = io('http://127.0.0.1:8000')
     const videoPlayerRef = useRef(null); 
     const canvasRef = useRef(null); 
@@ -104,4 +104,4 @@ function Update() {
     )
 }
 
-export default Update;
+export default Picture;

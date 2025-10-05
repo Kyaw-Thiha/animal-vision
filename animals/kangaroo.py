@@ -31,7 +31,7 @@ class Kangaroo(Animal):
         result_in_rgb = result_in_rgb.reshape(linear_normalized_image.shape)
 
         # ---------- 5) apply vertical gain ----------
-        result_in_rgb = apply_anisotropic_acuity_blur_with_streak(0.55, 0.8, 2.3, 8)
+        result_in_rgb = apply_anisotropic_acuity_blur_with_streak(result_in_rgb, 0.55, 0.8, 2.3, 8)
 
         # ---------- 6) linear -> sRGB and restore dtype ----------
         result_in_srgb = np.clip(linear_to_srgb(np.clip(result_in_rgb, 0.0, 1.0)), 0.0, 1.0)

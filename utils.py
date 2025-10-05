@@ -5,6 +5,7 @@ from typing import List, Tuple
 import cv2
 from InquirerPy import inquirer
 
+from animals.anchovy import Anchovy
 from animals.animal import Animal
 from animals.damselfish import Damselfish
 from animals.goldfish import Goldfish
@@ -302,6 +303,7 @@ def choose_animal() -> Animal:
         {"name": "GoldFish", "value": Goldfish()},
         {"name": "DamselFish", "value": Damselfish()},
         {"name": "Anableps (Four-eyed fish)", "value": Anableps()},
+        {"name": "Northern Anchovy Fish", "value": Anchovy()},
     ]
     animal_choice = inquirer.select(  # type: ignore[reportPrivateImportUsage]
         message="Select which animal you want to visualize:",

@@ -25,3 +25,4 @@ from .rat_uv import RatUV
 from .goldfish import Goldfish
 from .damselfish import Damselfish
 from .anableps import Anableps
+from .anchovy import Anchovy

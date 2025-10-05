@@ -5,6 +5,7 @@ from InquirerPy import inquirer
 
 from animals.animal import Animal
 from animals import Cat, Dog
+from animals.honeybee import HoneyBee
 
 
 def choose_file(input_dir: str, extensions: Tuple[str, ...]) -> str:
@@ -63,6 +64,7 @@ def choose_animal() -> Animal:
     animal_choices = [
         {"name": "Cat", "value": Cat()},
         {"name": "Dog", "value": Dog()},
+        {"name": "HoneyBee", "value": HoneyBee()},
     ]
     animal_choice = inquirer.select(  # type: ignore[reportPrivateImportUsage]
         message="Select which animal you want to visualize:",

@@ -25,7 +25,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--height", type=int, default=256, help="Dummy input height")
     parser.add_argument("--width", type=int, default=256, help="Dummy input width")
     parser.add_argument("--channels", type=int, default=3, help="Input channels (RGB=3)")
-    parser.add_argument("--batch", type=int, default=1, help="Dummy input batch size")
+    parser.add_argument("--batch", type=int, default=4, help="Dummy input batch size")
     parser.add_argument("--opset", type=int, default=17, help="ONNX opset version")
     parser.add_argument("--dynamic", action="store_true", help="Use dynamic axes for batch/height/width")
     parser.add_argument("--half", action="store_true", help="Export with FP16 (if supported)")

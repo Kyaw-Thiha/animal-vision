@@ -1,197 +1,167 @@
-#!/usr/bin/env python3
-from __future__ import annotations
-import os
-from typing import Tuple, Optional, List, Any, cast
-
+from typing import Tuple, List, Any, cast
 import numpy as np
-
-try:
-    import onnxruntime as ort
-except Exception as e:
-    raise ImportError(
-        "onnxruntime is required. Install with `pip install onnxruntime` (or `onnxruntime-gpu` on CUDA machines)."
-    ) from e
-
-# ---------------------------------------------------------------------
-# Session cache
-# ---------------------------------------------------------------------
-_SESSION_CACHE: dict[str, ort.InferenceSession] = {}
+import onnxruntime as ort
 
 
-def _select_providers() -> List[str]:
-    providers = ort.get_available_providers()
-    if "CUDAExecutionProvider" in providers:
-        return ["CUDAExecutionProvider", "CPUExecutionProvider"]
-    if "CoreMLExecutionProvider" in providers:
-        return ["CoreMLExecutionProvider", "CPUExecutionProvider"]
-    if "DmlExecutionProvider" in providers:
-        return ["DmlExecutionProvider", "CPUExecutionProvider"]
-    return ["CPUExecutionProvider"]
+def _hann2d(h: int, w: int) -> np.ndarray:
+    """2D Hann window for feathered blending (range ~[0,1])."""
+    wy = 0.5 - 0.5 * np.cos(2 * np.pi * np.linspace(0, 1, h, dtype=np.float32))
+    wx = 0.5 - 0.5 * np.cos(2 * np.pi * np.linspace(0, 1, w, dtype=np.float32))
+    return (wy[:, None] * wx[None, :]).astype(np.float32)
 
 
-def _get_session(onnx_path: str) -> ort.InferenceSession:
-    key = os.path.abspath(onnx_path)
-    if key in _SESSION_CACHE:
-        return _SESSION_CACHE[key]
-
-    if not os.path.exists(onnx_path):
-        raise FileNotFoundError(f"ONNX model not found: {onnx_path}")
-
-    sess_opts = ort.SessionOptions()
-    sess_opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-    session = ort.InferenceSession(onnx_path, sess_options=sess_opts, providers=_select_providers())
-
-    # Basic I/O sanity
-    assert len(session.get_inputs()) >= 1, "Model has no inputs."
-    assert len(session.get_outputs()) >= 1, "Model has no outputs."
-
-    _SESSION_CACHE[key] = session
-    return session
-
-
-def _infer_io_names(session: ort.InferenceSession) -> Tuple[str, str]:
-    inputs = session.get_inputs()
-    outputs = session.get_outputs()
-    if not inputs or not outputs:
-        raise RuntimeError("Model must have at least one input and one output.")
-    return inputs[0].name, outputs[0].name
-
-
-# ---------------------------------------------------------------------
-# Pre/Post utilities + strong validations
-# ---------------------------------------------------------------------
-def _validate_input_image(img: Any) -> np.ndarray:
-    """Ensure img is HxWx3 ndarray with dtype uint8 or float and return it."""
-    if not isinstance(img, np.ndarray):
-        raise TypeError(f"image must be a numpy.ndarray, got {type(img).__name__}")
-    if img.ndim != 3 or img.shape[2] != 3:
-        raise ValueError(f"image must be HxWx3, got shape {img.shape}")
-    if img.dtype not in (np.uint8, np.float16, np.float32, np.float64):
-        raise TypeError(f"Unsupported dtype {img.dtype}. Use uint8 or float (float16/32/64).")
-    return img
-
-
-def _to_float_chw(img: np.ndarray) -> Tuple[np.ndarray, str]:
+def _reflect_pad_to_cover(H: int, W: int, tile: int, overlap: int) -> Tuple[int, int]:
     """
-    Convert HWC RGB image to float32 NCHW in [0,1], remember original dtype.
-    Asserts the final shape.
+    Compute padded size so a grid of stride=(tile-overlap) tiles covers the whole image
+    and each tile is exactly `tile` in size.
     """
-    img = _validate_input_image(img)
-    orig_dtype = str(img.dtype)
+    assert 0 <= overlap < tile
+    stride = tile - overlap
 
-    x = img.astype(np.float32, copy=False)
-    if img.dtype == np.uint8:
-        x = x / 255.0
+    def cover(L: int) -> int:
+        if L <= tile:
+            return tile
+        # how many strides needed so last tile end >= L
+        n = int(np.ceil((L - tile) / stride)) + 1
+        return stride * n + overlap
 
-    # Assert range if float input (be generous but warn)
-    if img.dtype != np.uint8:
-        # Not hard failing here, but we’ll clamp later anyway.
-        pass
-
-    # HWC -> NCHW, add batch
-    x = np.transpose(x, (2, 0, 1))[None, ...]  # (1,3,H,W)
-
-    # Strong shape assertions
-    assert x.ndim == 4, f"Preprocessed input must be 4D, got {x.ndim}D"
-    assert x.shape[0] == 1, f"Batch must be 1, got {x.shape[0]}"
-    assert x.shape[1] == 3, f"Channels must be 3 (RGB), got {x.shape[1]}"
-    return x, orig_dtype
+    return cover(H), cover(W)
 
 
-def _to_hwc(out: Any, reference_hw: Tuple[int, int]) -> np.ndarray:
+def _extract_tiles(img: np.ndarray, tile: int, overlap: int) -> Tuple[List[Tuple[int, int, np.ndarray]], np.ndarray, int, int]:
     """
-    Convert model output to HWC float32.
-    Accepts (1,C,H,W) or (1,H,W,C) or already (H,W,C). Will crop to reference_hw if larger.
+    Reflect-pad the image so a grid of tiles (tile×tile) fully covers it.
+    Return (tiles, img_pad, Hp, Wp) where:
+      tiles: list of (y, x, tile_view) coords in the padded image
+      img_pad: the padded image
+      Hp, Wp: padded height/width
     """
-    out_arr = np.asarray(out)  # handles OrtValue, lists, etc.
-    if out_arr.ndim == 4:
-        if out_arr.shape[0] != 1:
-            raise ValueError(f"Output batch must be 1, got {out_arr.shape[0]}")
-        # Try NCHW
-        if out_arr.shape[1] in (1, 2, 3, 4):
-            out_arr = np.transpose(out_arr[0], (1, 2, 0))  # (H,W,C)
-        # Else NHWC
-        elif out_arr.shape[-1] in (1, 2, 3, 4):
-            out_arr = out_arr[0]  # (H,W,C)
-        else:
-            raise ValueError(f"Unsupported 4D output shape {out_arr.shape}; expected channels in dim 1 or -1.")
-    elif out_arr.ndim == 3:
-        # Assume already HWC
-        pass
-    else:
-        raise ValueError(f"Unsupported output rank {out_arr.ndim}; expected 3 or 4 dims.")
+    H, W = img.shape[:2]
+    stride = tile - overlap
+    Hp, Wp = _reflect_pad_to_cover(H, W, tile, overlap)
+    pad_y = Hp - H
+    pad_x = Wp - W
 
-    H, W = reference_hw
-    if out_arr.shape[0] < H or out_arr.shape[1] < W:
-        raise ValueError(f"Output spatial size {out_arr.shape[:2]} is smaller than input {(H, W)}.")
-    if out_arr.shape[0] != H or out_arr.shape[1] != W:
-        out_arr = out_arr[:H, :W, :]
+    # Split padding per side without going negative.
+    # Prefer to put up to overlap//2 on the top/left, rest on bottom/right.
+    top_pad = int(min(pad_y, overlap // 2))
+    bottom_pad = int(pad_y - top_pad)
+    left_pad = int(min(pad_x, overlap // 2))
+    right_pad = int(pad_x - left_pad)
 
-    # Channel sanity
-    C = out_arr.shape[2]
-    if C not in (1, 2, 3, 4):
-        raise ValueError(f"Unexpected channel count {C}; expected 1..4.")
+    # All pads must be >= 0 here
+    assert top_pad >= 0 and bottom_pad >= 0 and left_pad >= 0 and right_pad >= 0
 
-    return out_arr.astype(np.float32, copy=False)
+    img_pad = np.pad(
+        img,
+        ((top_pad, bottom_pad), (left_pad, right_pad), (0, 0)),
+        mode="reflect",
+    )
+
+    tiles: List[Tuple[int, int, np.ndarray]] = []
+    for y in range(0, Hp - tile + 1, stride):
+        for x in range(0, Wp - tile + 1, stride):
+            tiles.append((y, x, img_pad[y : y + tile, x : x + tile, :]))
+    return tiles, img_pad, Hp, Wp
 
 
-# ---------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------
-def predict_rgb_to_hsi(image: np.ndarray, onnx_path: str) -> np.ndarray:
+def predict_rgb_to_hsi(
+    image: np.ndarray,
+    onnx_path: str,
+    tile: int = 256,
+    overlap: int = 64,
+    batch_size: int = 4,
+) -> np.ndarray:
     """
-    Run an ONNX model that maps an RGB image to an HSI image.
+    Run a 256x256-only ONNX model over an arbitrary-size RGB image by tiling + blending.
 
-    Parameters
-    ----------
-    image : np.ndarray
-        Input RGB image as HxWx3. dtype can be uint8 (0..255) or float (expected in [0,1]).
-    onnx_path : str
-        Path to the ONNX model file.
+    Args
+    ----
+    image: HxWx3 (uint8 in [0,255] or float in [0,1]), sRGB-encoded.
+    onnx_path: path to the fixed-size ONNX model (expects NCHW 1x3x256x256 typically).
+    tile: tile size (must be what the model expects; 256 here).
+    overlap: pixels of overlap between tiles to suppress seams (e.g., 32~64).
+    batch_size: how many tiles to run per session.run call.
 
     Returns
     -------
-    np.ndarray
-        HSI image as HxWxC float32 (usually C=3), same height/width as input.
+    HxWxC_hsi float32 HSI cube (same H, W as input; bands from the model).
     """
-    # Preprocess + assertions
-    tensor, _ = _to_float_chw(image)  # (1,3,H,W)
+    assert image.ndim == 3 and image.shape[2] == 3, "Input must be HxWx3."
+    # Normalize to float32 [0,1] for the model unless your preprocessing differs
+    if np.issubdtype(image.dtype, np.integer):
+        img = image.astype(np.float32) / 255.0
+    else:
+        img = image.astype(np.float32)
+        if img.max() > 1.001:
+            img = np.clip(img / 255.0, 0.0, 1.0)
+
+    # Prepare tiles
+    tiles, img_pad, Hp, Wp = _extract_tiles(img, tile=tile, overlap=overlap)
+    if len(tiles) == 0:
+        # Extremely small/empty input edge-case; fall back to simple center pad-and-run once.
+        Hp = max(tile, img.shape[0])
+        Wp = max(tile, img.shape[1])
+        pad_y = Hp - img.shape[0]
+        pad_x = Wp - img.shape[1]
+        img_pad = np.pad(img, ((0, pad_y), (0, pad_x), (0, 0)), mode="reflect")
+        tiles = [(0, 0, img_pad[:tile, :tile, :])]
+
+    hann = _hann2d(tile, tile).astype(np.float32)[..., None]  # broadcast over channels
+
+    # Open session once
+    sess = ort.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
+    input_name = sess.get_inputs()[0].name
+    output_name = sess.get_outputs()[0].name
+
+    # Probe output layout/channels with a single run
+    y0, x0, t0 = tiles[0]
+    tin = t0.transpose(2, 0, 1)[None, ...]  # 1x3xHxW
+    out0_any: Any = sess.run([output_name], {input_name: tin})[0]
+    out0 = cast(np.ndarray, out0_any)
+    if out0.ndim != 4:
+        raise RuntimeError("Unexpected ONNX output rank; expected 4D (N,C,H,W or N,H,W,C).")
+    _, d1, d2, d3 = out0.shape
+    if d2 == tile and d3 == tile:  # NCHW
+        out_is_nchw = True
+        C_hsi = d1
+    elif d1 == tile and d2 == tile:  # NHWC
+        out_is_nchw = False
+        C_hsi = d3
+    else:
+        raise RuntimeError("Cannot infer output layout; dims do not match tile size.")
+
+    # Accumulators for stitched output
     H, W = image.shape[:2]
-    assert tensor.shape == (1, 3, H, W), f"Unexpected tensor shape {tensor.shape}"
+    out_accum = np.zeros((Hp, Wp, C_hsi), dtype=np.float32)
+    w_accum = np.zeros((Hp, Wp, C_hsi), dtype=np.float32)
 
-    # Session + IO names
-    session = _get_session(onnx_path)
-    input_name, output_name = _infer_io_names(session)
+    # Batch over tiles
+    def run_batch(batch_tiles: List[Tuple[int, int, np.ndarray]]) -> None:
+        if not batch_tiles:
+            return
+        batch = np.stack([t[2].transpose(2, 0, 1) for t in batch_tiles], axis=0)  # Nx3xHxW
+        preds_any: Any = sess.run([output_name], {input_name: batch})[0]
+        preds = cast(np.ndarray, preds_any)
+        if out_is_nchw:
+            preds = np.transpose(preds, (0, 2, 3, 1))  # NxHxWxC
+        # else: already NHWC
+        for (y, x, _), pred in zip(batch_tiles, preds):
+            w = hann if C_hsi == 1 else np.repeat(hann, C_hsi, axis=2)
+            out_accum[y : y + tile, x : x + tile, :] += pred * w
+            w_accum[y : y + tile, x : x + tile, :] += w
 
-    # Optional: basic input meta check (if present)
-    inp_meta = session.get_inputs()[0]
-    if inp_meta.shape is not None and isinstance(inp_meta.shape, list):
-        # Skip dynamic dims (None/str), but verify channel order if static
-        if len(inp_meta.shape) == 4:
-            # Heuristics only; many models are NCHW
-            pass
+    # Iterate in mini-batches
+    cursor = 0
+    N = len(tiles)
+    while cursor < N:
+        run_batch(tiles[cursor : cursor + batch_size])
+        cursor += batch_size
 
-    # Run
-    # outputs: List[Any] = session.run([output_name], {input_name: tensor})
-    # if not outputs:
-    #     raise RuntimeError("ONNX Runtime returned no outputs.")
-    # out_any: Any = outputs[0]
-    out_any: Any = session.run([output_name], {input_name: tensor})[0]
+    # Normalize by weights and crop away padding
+    stitched = out_accum / np.maximum(w_accum, 1e-8)
+    top = overlap // 2
+    left = overlap // 2
+    stitched = stitched[top : top + H, left : left + W, :]
 
-    # Postprocess → HWC float32 + assertions
-    hsi = _to_hwc(out_any, (H, W))
-
-    # Numeric sanity
-    if not np.all(np.isfinite(hsi)):
-        raise ValueError("HSI output contains non-finite values (NaN/Inf).")
-
-    # Range policy: clamp to [0,1] (adjust if your model uses different ranges)
-    hsi = np.clip(hsi, 0.0, 1.0)
-
-    # Final shape/dtype assertions
-    assert hsi.ndim == 3 and hsi.shape[0] == H and hsi.shape[1] == W, (
-        f"Final HSI shape must be (H,W,C) with H={H},W={W}, got {hsi.shape}"
-    )
-    assert hsi.dtype == np.float32, f"HSI dtype must be float32, got {hsi.dtype}"
-
-    return hsi
+    return stitched.astype(np.float32)

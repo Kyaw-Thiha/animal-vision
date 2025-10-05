@@ -9,7 +9,7 @@ function Update() {
     const hiddencanvasRef = useRef(null); 
     const [openCamera, setOpenCamera] = useState(true); 
     const [image, setImage] = useState(""); 
-    const [animal, setAnimal] = useState("human"); 
+    const [animal, setAnimal] = useState("cat"); 
     const [connection, setConnection] = useState(null);
    
     socket.on('connect', () => {
@@ -57,7 +57,7 @@ function Update() {
     useEffect(() => {
       const interval = setInterval(() => {
         captureImage()
-      }, 100);
+      }, 200);
     
       return () => clearInterval(interval); // This represents the unmount function, in which you need to clear your interval to prevent memory leaks.
     }, [])

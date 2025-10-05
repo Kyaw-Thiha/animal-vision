@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Tuple
 import numpy as np
 from animals.animal_utils import *
 from animals.animal_utils2 import *
@@ -7,8 +7,7 @@ from animals.animal import Animal
 
 
 class Cat(Animal):
-    def visualize(self, image: np.ndarray) -> Optional[np.ndarray]:
-        pass
+    def visualize(self, image: np.ndarray) -> Optional[Tuple[np.ndarray, np.ndarray]]:
         """
         Simulate a simple dog-vision rendering from an RGB image.
 
@@ -61,19 +60,19 @@ class Cat(Animal):
         # ---------- 7) deal with FOV ----------
         H, W = result_in_rgb.shape[:2]
         enlarged = enlarge_then_crop(
-                result_in_rgb,
-                scale=1.6,
-                out_size=(W, H),
-                crop_anchor="center",
-                pad_value=0.0,
-            )
+            result_in_rgb,
+            scale=1.6,
+            out_size=(W, H),
+            crop_anchor="center",
+            pad_value=0.0,
+        )
         result_in_rgb = animal_fov_binocular_warp(
-                enlarged,
-                fov_in_deg=60.0,
-                per_eye_half_fov_deg=100.0,
-                overlap_deg=80.0,
-                out_size=(W, H),
-            )
+            enlarged,
+            fov_in_deg=60.0,
+            per_eye_half_fov_deg=100.0,
+            overlap_deg=80.0,
+            out_size=(W, H),
+        )
 
         # ---------- 8) linear -> sRGB and restore dtype ----------
         result_in_srgb = np.clip(linear_to_srgb(np.clip(result_in_rgb, 0.0, 1.0)), 0.0, 1.0)
@@ -83,4 +82,4 @@ class Cat(Animal):
         else:
             out = result_in_srgb.astype(orig_dtype)
 
-        return out
+        return image, out

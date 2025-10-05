@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Tuple
 import numpy as np
 
 from animals.animal_utils import *
@@ -7,7 +7,7 @@ from animals.animal import Animal
 
 
 class Pig(Animal):
-    def visualize(self, image: np.ndarray) -> Optional[np.ndarray]:
+    def visualize(self, image: np.ndarray) -> Optional[Tuple[np.ndarray, np.ndarray]]:
         pass
         """
         Simulate a simple pig-vision rendering from an RGB image.
@@ -37,7 +37,6 @@ class Pig(Animal):
         # ---------- 6) apply blur ----------
         apply_chroma_compression(result_in_rgb, 0.55)
 
-
         # ---------- 7) linear -> sRGB and restore dtype ----------
         result_in_srgb = np.clip(linear_to_srgb(np.clip(result_in_rgb, 0.0, 1.0)), 0.0, 1.0)
 
@@ -46,4 +45,4 @@ class Pig(Animal):
         else:
             out = result_in_srgb.astype(orig_dtype)
 
-        return out
+        return image, out

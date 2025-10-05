@@ -1,6 +1,27 @@
 # Animal Vision
 A tool to help people visualize how animals see, using a combination of machine learning & mathematical models.
 
+Our motivation is that this allow us humans to truly appreciate the biodiversity of the nature, and feel the need to conserve this beautiful ecosystem of our planet Earth.
+
+
+# Visualization
+## Non-UV Animals
+We rendered the eyes of these animals using mathematical transformation to map 
+
+![Non-UV Animals](./images/gallery_NonUV.png)
+
+## UV Animals
+We convert the RGB (3 wavelengths) into Hyperspectral Images (31 wavelengths).
+This allow us to leverage spectral local similarity to estimate UV values.
+We then map these UV values into different receptors and render the reflectance values.
+
+![UV Animals](./images/gallery_UV.png)
+
+These are unique animals which have interesting visualization from UV.
+![UV Unique Animals](./images/gallery_Unique_UV.png)
+
+# Feaures
+
 ## Data Preparation
 Here are the steps to prepare `input` and `output`.
 1. Make and `input/images` folder in root dir.

@@ -3,6 +3,7 @@ A tool to help people visualize how animals see, using a combination of machine 
 
 Our motivation is that this allow us humans to truly appreciate the biodiversity of the nature, and feel the need to conserve this beautiful ecosystem of our planet Earth.
 
+https://github.com/user-attachments/assets/3c1bec96-1103-4557-8050-9309c2cb3706
 
 # Visualization
 ## Non-UV Animals

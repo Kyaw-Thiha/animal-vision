@@ -7,18 +7,20 @@ https://github.com/user-attachments/assets/3c1bec96-1103-4557-8050-9309c2cb3706
 
 # Visualization
 ## Non-UV Animals
-We rendered the eyes of these animals using mathematical transformation to map 
+We rendered the eyes of these animals using mathematical transformation to map human sRGB color space to each species’ estimated cone responses (L–M–S).
+These simulations approximate how dichromatic and trichromatic animals perceive color, brightness, and contrast.
 
 ![Non-UV Animals](./images/gallery_NonUV.png)
 
 ## UV Animals
 We convert the RGB (3 wavelengths) into Hyperspectral Images (31 wavelengths).
-This allow us to leverage spectral local similarity to estimate UV values.
-We then map these UV values into different receptors and render the reflectance values.
+This allows us to leverage spectral local similarity to estimate missing UV components.
+We then map these UV values to species-specific photoreceptors and render the resulting reflectance profiles.
 
 ![UV Animals](./images/gallery_UV.png)
 
-These are unique animals which have interesting visualization from UV.
+These species exhibit advanced ultraviolet perception, offering visualizations that differ significantly from standard UV-sensitive animals.
+
 ![UV Unique Animals](./images/gallery_Unique_UV.png)
 
 # Feaures

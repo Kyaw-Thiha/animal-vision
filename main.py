@@ -129,6 +129,12 @@ UV_NAMES = [
     "Morpho Butterfly",
     "Heliconius Butterfly",
     "Pieris Butterfly",
+    # Unique UV animals
+    "Mantis Shrimp",
+    "Kestrel",
+    "Jumping Spider",
+    "DragonFly",
+    "HummingBird",
 ]
 UNIQUE_UV_NAMES = ["Mantis Shrimp", "Kestrel", "Jumping Spider", "DragonFly", "HummingBird"]
 

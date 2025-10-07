@@ -56,7 +56,7 @@ class HoneyBee(Animal):
             "opponent",
             "uv_purple_yellow",
             "falsecolor_uv_mixed",
-        ] = "uv_purple_yellow",
+        ] = "opponent",
         custom_matrix: Optional[np.ndarray] = None,
         blur_sigma_px: Optional[float] = 0.2,
         assume_hsi_is_reflectance: bool = True,
